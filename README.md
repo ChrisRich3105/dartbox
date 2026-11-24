@@ -5,7 +5,7 @@
 [![CI](https://github.com/ChrisRich3105/dartbox/actions/workflows/ci.yml/badge.svg)](https://github.com/ChrisRich3105/dartbox/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ChrisRich3105/dartbox)](https://github.com/ChrisRich3105/dartbox/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Buy me a coffee](https://img.shields.io/badge/☕-Buy%20me%20a%20coffee-ffdd00)](https://www.buymeacoffee.com/YOUR_BMC_NAME)
+[![Buy me a coffee](https://img.shields.io/badge/☕-Buy%20me%20a%20coffee-ffdd00)](https://www.buymeacoffee.com/chrisrich3105)
 
 - Plug in a monitor → it shows Autodarts (or the offline playroom) fullscreen.
 - No monitor → it runs headless; you use your phone.
@@ -317,7 +317,7 @@ Pull requests and bug reports are welcome – please describe your hardware and 
 
 Dartbox is free and open source. If it saves you an evening of tinkering or you simply enjoy it, you can buy me a coffee:
 
-[![Buy me a coffee](https://img.shields.io/badge/☕-Buy%20me%20a%20coffee-ffdd00?style=for-the-badge)](https://www.buymeacoffee.com/YOUR_BMC_NAME)
+[![Buy me a coffee](https://img.shields.io/badge/☕-Buy%20me%20a%20coffee-ffdd00?style=for-the-badge)](https://www.buymeacoffee.com/chrisrich3105)
 
 The link also appears in the hub (System tab and page footer) and in the playroom.
 
