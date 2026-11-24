@@ -177,7 +177,7 @@
 
   <div class="card">
     <div class="row"><h2 style="margin:0">Connect to WiFi</h2><a href="#wifi" onclick="rescan();return false">rescan</a></div>
-    <ul id="nets"><li class="mut">Loading…</li></ul>
+    <ul id="nets"><li class="mut" data-loading="1">Loading…</li></ul>
     <form id="form" class="hidden" onsubmit="connect();return false">
       <label>Network name (SSID)<input id="ssid" autocomplete="off" required maxlength="32"></label>
       <label>Password <span class="mut">(empty for open networks)</span><input id="pw" type="password" autocomplete="off" maxlength="63"></label>
@@ -194,7 +194,7 @@
     <p class="mut">Setup mode starts the hotspot until a network is configured or the box is rebooted.</p>
     <div class="btns">
       <button class="sec" onclick="post('/api/hotspot','Switching to setup mode…')">Setup mode</button>
-      <button class="danger" onclick="if(confirm('Delete all saved WiFi networks?')) post('/api/forget','All WiFi networks deleted, hotspot starting…')">Forget all WiFi</button>
+      <button class="danger" onclick="if(confirm(t('Delete all saved WiFi networks?'))) post('/api/forget','All WiFi networks deleted, hotspot starting…')">Forget all WiFi</button>
     </div>
   </div>
 </main>
@@ -216,6 +216,72 @@ function forMe(url){ return url && !isKiosk ? url.replace('//localhost', '//' + 
 document.querySelectorAll('.kiosk-only').forEach(e => e.classList.toggle('hidden', !isKiosk));
 document.querySelectorAll('.remote-only').forEach(e => e.classList.toggle('hidden', isKiosk));
 
+// ---------------------------------------------------------------- language (English source, German translation)
+const DE = {
+  'Home': 'Start', 'Board': 'Board', 'WiFi': 'WLAN', 'System': 'System',
+  'Update available:': 'Update verfügbar:', "See what's new and install it in the System tab.": 'Neuigkeiten ansehen und im System-Tab installieren.', 'Show': 'Anzeigen',
+  'Online – opening': 'Online – öffne', 'in': 'in', 'Stay on the hub': 'Im Hub bleiben', 'Open': 'Öffnen',
+  'Board manager': 'Board Manager', 'cameras, calibration': 'Kameras, Kalibrierung', 'Local playroom': 'Lokaler Playroom', 'coming soon': 'demnächst',
+  'offline games & training': 'Offline-Spiele & Training',
+  'Tap the 🎯 button in the bottom-left corner of any page to come back here.': 'Tippe auf jeder Seite unten links auf 🎯, um hierher zurückzukommen.',
+  'Show on the dartbox screen': 'Auf dem Dartbox-Bildschirm zeigen', 'Remote control for the monitor attached to the box.': 'Fernbedienung für den Bildschirm an der Box.',
+  'Playroom': 'Playroom', 'Hub': 'Hub', '↻ Reload': '↻ Neu laden', 'Status': 'Status', 'Network': 'Netzwerk', 'IP address': 'IP-Adresse', 'Address': 'Adresse',
+  'Software': 'Software', 'Installed version': 'Installierte Version', 'Newest version': 'Neueste Version', 'Last checked': 'Zuletzt geprüft',
+  'Previous version (rollback)': 'Vorherige Version (Rollback)', 'Check for updates': 'Nach Updates suchen', 'Update': 'Update', 'Roll back': 'Zurückrollen',
+  'Details (log)': 'Details (Protokoll)', "What's new": 'Was ist neu', 'How updates work': 'So funktionieren Updates',
+  'The box checks for new releases every few hours. Updating keeps your settings, players and statistics. Before installing, a backup is made; after installing, a self-test runs. If anything fails, the box goes back to the previous version automatically. You can also roll back by hand at any time.':
+    'Die Box sucht alle paar Stunden nach neuen Versionen. Ein Update behält Einstellungen, Spieler und Statistik. Vor der Installation wird ein Backup gemacht, danach läuft ein Selbsttest. Geht etwas schief, kehrt die Box automatisch zur vorherigen Version zurück. Du kannst auch jederzeit selbst zurückrollen.',
+  'Support the project': 'Projekt unterstützen', 'Dartbox is free and open source. If you enjoy it, you can buy the developer a coffee ☕': 'Dartbox ist kostenlos und Open Source. Wenn es dir gefällt, kannst du dem Entwickler einen Kaffee spendieren ☕',
+  '☕ Buy me a coffee': '☕ Spendier mir einen Kaffee', 'Autodarts board manager': 'Autodarts Board Manager', 'open full page ↗': 'ganze Seite öffnen ↗',
+  '– if this stays blank, the board manager is not running or refuses to be embedded.': '– bleibt das leer, läuft der Board Manager nicht oder lässt sich nicht einbetten.',
+  'Setup hotspot': 'Einrichtungs-Hotspot', 'Connect to WiFi': 'Mit WLAN verbinden', 'rescan': 'neu suchen', 'Loading…': 'Lade…',
+  'Network name (SSID)': 'Netzwerkname (SSID)', 'Password': 'Passwort', '(empty for open networks)': '(leer bei offenen Netzen)', 'hidden network': 'verstecktes Netz',
+  'Connect': 'Verbinden', 'Cancel': 'Abbrechen', 'Enter network manually…': 'Netzwerk manuell eingeben…', 'Maintenance': 'Wartung',
+  'Setup mode starts the hotspot until a network is configured or the box is rebooted.': 'Der Einrichtungsmodus startet den Hotspot, bis ein Netzwerk eingerichtet oder die Box neu gestartet wird.',
+  'Setup mode': 'Einrichtungsmodus', 'Forget all WiFi': 'Alle WLANs vergessen',
+  'online': 'online', 'setup hotspot': 'Einrichtungs-Hotspot', 'connecting…': 'verbinde…', 'offline': 'offline', 'starting': 'startet',
+  'Sent – the screen switches within a few seconds.': 'Gesendet – der Bildschirm wechselt in wenigen Sekunden.',
+  'No networks found – try rescan.': 'Keine Netzwerke gefunden – neu suchen.',
+  'Connecting to {ssid}…': 'Verbinde mit {ssid}…',
+  'If you set this up from your phone: the setup hotspot disappears now.': 'Wenn du das am Handy einrichtest: Der Einrichtungs-Hotspot verschwindet jetzt.',
+  'Reconnect your phone to your normal WiFi and open {url}': 'Verbinde dein Handy wieder mit deinem normalen WLAN und öffne {url}',
+  'If the password was wrong, the setup hotspot comes back within a minute.': 'War das Passwort falsch, kommt der Einrichtungs-Hotspot innerhalb einer Minute zurück.',
+  'Scanning… (the setup hotspot may drop for a few seconds – reconnect if needed)': 'Suche… (der Hotspot kann kurz wegfallen – ggf. neu verbinden)',
+  'Switching to setup mode…': 'Wechsle in den Einrichtungsmodus…', 'Delete all saved WiFi networks?': 'Alle gespeicherten WLANs löschen?',
+  'All WiFi networks deleted, hotspot starting…': 'Alle WLANs gelöscht, Hotspot startet…',
+  '{tag} – update available': '{tag} – Update verfügbar', '{tag} – you are up to date': '{tag} – du bist aktuell', 'not checked yet': 'noch nicht geprüft',
+  'no update source configured': 'keine Update-Quelle eingerichtet', 'Update to {tag}': 'Update auf {tag}', 'Roll back to {v}': 'Zurück auf {v}', 'Checking…': 'Prüfe…',
+  'Downloading…': 'Lade herunter…', 'Installing…': 'Installiere…', 'Testing…': 'Teste…', 'Rolling back…': 'Rolle zurück…', '✓ Done': '✓ Fertig', '✗ Failed': '✗ Fehlgeschlagen', '↩ Rolled back': '↩ Zurückgerollt',
+  'Install {tag}?': '{tag} installieren?',
+  'The box makes a backup first and goes back automatically if the new version does not pass its self-test. A game in progress may be interrupted.': 'Die Box macht vorher ein Backup und kehrt automatisch zurück, wenn die neue Version den Selbsttest nicht besteht. Ein laufendes Spiel kann unterbrochen werden.',
+  'Could not start the update': 'Update konnte nicht gestartet werden', 'Go back to version {v}?': 'Zurück auf Version {v}?',
+  'Settings, players and statistics are kept.': 'Einstellungen, Spieler und Statistik bleiben erhalten.', 'Could not start the rollback': 'Rollback konnte nicht gestartet werden',
+};
+let LANG = 'en';
+function t(s, v = {}) {
+  const x = LANG === 'de' && DE[s] !== undefined ? DE[s] : s;
+  return x.replace(/\{(\w+)\}/g, (_, k) => (v[k] !== undefined ? v[k] : ''));
+}
+const ORIG = new WeakMap();
+/** translate the static page text (each text node is looked up as a whole, whitespace-normalised) */
+function translateDOM(){
+  document.documentElement.lang = LANG;
+  const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: (n) =>
+    n.parentElement && !n.parentElement.closest('script,style,#notes,#u-log,#nets,#msg') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+  for (let n; (n = walk.nextNode());) {
+    if (!ORIG.has(n)) ORIG.set(n, n.nodeValue);
+    const orig = ORIG.get(n), key = orig.replace(/\s+/g, ' ').trim();
+    if (!key || DE[key] === undefined) continue;
+    n.nodeValue = orig.replace(orig.trim(), t(key));
+  }
+  const ld = document.querySelector('#nets li[data-loading]');      // the network list itself is never translated
+  if (ld) ld.textContent = t('Loading…');
+}
+function setLanguage(pref){
+  const l = pref === 'de' || pref === 'en' ? pref : ((navigator.language || '').toLowerCase().startsWith('de') ? 'de' : 'en');
+  if (l !== LANG) { LANG = l; translateDOM(); }
+}
+
 // ---------------------------------------------------------------- tabs
 function showTab(){
   const tab = (location.hash || '#home').slice(1);
@@ -231,8 +297,9 @@ window.addEventListener('hashchange', showTab);
 const MODES = {online:'online', hotspot:'setup hotspot', connecting:'connecting…', offline:'offline', starting:'starting'};
 async function status(){
   try { S = await (await fetch('/api/status')).json(); } catch(e) { return; }
+  setLanguage(S.language);
   const m = S.mode || 'starting';
-  for (const id of ['mode','mode2']) { $(id).textContent = MODES[m] || m; $(id).className = 'pill ' + m; }
+  for (const id of ['mode','mode2']) { $(id).textContent = t(MODES[m] || m); $(id).className = 'pill ' + m; }
   $('conn').textContent = $('conn2').textContent = S.connection || '–';
   $('ip').textContent = S.ip || '–';
   $('addr').textContent = S.hostname ? `http://${S.hostname}.local/` : '–';
@@ -243,16 +310,16 @@ async function status(){
   $('updDot').hidden = !S.update_available;
   $('updtag').textContent = S.update_tag || '';
   $('f-version').textContent = S.version ? 'Dartbox ' + S.version : '';
-  $('f-support').innerHTML = S.support_url ? ` · <a href="${esc(S.support_url)}" target="_blank" rel="noopener">☕ Buy me a coffee</a>` : '';
+  $('f-support').innerHTML = S.support_url ? ` · <a href="${esc(S.support_url)}" target="_blank" rel="noopener">${t('☕ Buy me a coffee')}</a>` : '';
   if (S.support_url) { $('coffee2').href = S.support_url; $('supportcard').hidden = false; }
 
   // tiles: kiosk navigates in place (🎯 button brings you back), others open a new tab
   for (const v of ['autodarts','board','playroom']) {
-    const t = $('t-' + v), url = forMe(S.views[v]);
-    t.classList.toggle('disabled', !url);
-    if (url) { t.href = url; t.target = isKiosk ? '_self' : '_blank'; }
+    const tile = $('t-' + v), url = forMe(S.views[v]);
+    tile.classList.toggle('disabled', !url);
+    if (url) { tile.href = url; tile.target = isKiosk ? '_self' : '_blank'; }
   }
-  if (S.views.playroom) $('t-playroom-sub').textContent = 'offline games & training';
+  if (S.views.playroom) $('t-playroom-sub').textContent = t('offline games & training');
   $('s-playroom').disabled = !S.views.playroom;
   $('bm-open').href = forMe(S.views.board);
 
@@ -279,14 +346,14 @@ function stay(){ stayed = true; clearInterval(redirectTimer); $('redirect').hidd
 async function screen(view){
   const r = await fetch('/api/kiosk', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({view})});
   const j = await r.json();
-  $('screenmsg').textContent = r.ok ? 'Sent – the screen switches within a few seconds.' : j.error;
+  $('screenmsg').textContent = r.ok ? t('Sent – the screen switches within a few seconds.') : j.error;
 }
 
 // ---------------------------------------------------------------- wifi
 async function networks(){
   const r = await (await fetch('/api/networks')).json();
   const ul = $('nets');
-  if (!r.networks.length) { ul.innerHTML = '<li class="mut">No networks found – try rescan.</li>'; return; }
+  if (!r.networks.length) { ul.innerHTML = `<li class="mut">${t('No networks found – try rescan.')}</li>`; return; }
   ul.innerHTML = r.networks.map((n,i) =>
     `<li class="net" data-i="${i}"><span>${esc(n.ssid)} ${n.security ? '🔒' : ''}</span><span class="mut">${bars(n.signal)}</span></li>`).join('');
   ul.querySelectorAll('li.net').forEach(li => li.onclick = () => {
@@ -304,16 +371,16 @@ async function connect(){
   const j = await r.json();
   if (!r.ok) { alert(j.error); return; }
   hideForm();
-  showMsg(`Connecting to <b>${esc(body.ssid)}</b>…<br><br>` +
-    `If you set this up from your phone: the setup hotspot disappears now. ` +
-    `Reconnect your phone to your normal WiFi and open <b>http://${esc(S.hostname || 'dartbox')}.local/</b><br><br>` +
-    `If the password was wrong, the setup hotspot comes back within a minute.`);
+  showMsg(t('Connecting to {ssid}…', { ssid: `<b>${esc(body.ssid)}</b>` }) + '<br><br>' +
+    t('If you set this up from your phone: the setup hotspot disappears now.') + ' ' +
+    t('Reconnect your phone to your normal WiFi and open {url}', { url: `<b>http://${esc(S.hostname || 'dartbox')}.local/</b>` }) + '<br><br>' +
+    t('If the password was wrong, the setup hotspot comes back within a minute.'));
 }
 async function rescan(){
-  showMsg('Scanning… (the setup hotspot may drop for a few seconds – reconnect if needed)');
+  showMsg(t('Scanning… (the setup hotspot may drop for a few seconds – reconnect if needed)'));
   await fetch('/api/rescan', {method:'POST'}); setTimeout(networks, 8000);
 }
-async function post(url, msg){ await fetch(url, {method:'POST'}); showMsg(msg); }
+async function post(url, msg){ await fetch(url, {method:'POST'}); showMsg(t(msg)); }
 function showMsg(html){ $('msg').innerHTML = html; $('msg').hidden = false; }
 
 // ---------------------------------------------------------------- updates
@@ -356,21 +423,21 @@ async function loadUpdate(){
   try { U = await (await fetch('/api/update')).json(); } catch(e) { updTimer = setTimeout(loadUpdate, 3000); return; }
   const L = U.latest || {}, st = U.status || {state: 'idle'}, busy = BUSY.includes(st.state);
   $('v-inst').textContent = U.installed || '–';
-  $('v-latest').textContent = L.tag ? (L.update_available ? L.tag + ' – update available' : L.tag + ' – you are up to date')
-    : (U.repo ? 'not checked yet' : 'no update source configured');
+  $('v-latest').textContent = L.tag ? (L.update_available ? t('{tag} – update available', { tag: L.tag }) : t('{tag} – you are up to date', { tag: L.tag }))
+    : (U.repo ? t('not checked yet') : t('no update source configured'));
   $('v-checked').textContent = L.checked ? new Date(L.checked * 1000).toLocaleString() : '–';
   $('v-prev').textContent = U.previous || '–';
   $('v-prev-row').hidden = !U.previous;
   $('v-error').textContent = L.error || '';
   $('btn-update').hidden = !L.update_available || busy;
-  $('btn-update').textContent = 'Update to ' + (L.tag || '');
+  $('btn-update').textContent = t('Update to {tag}', { tag: L.tag || '' });
   $('btn-rollback').hidden = !U.previous || busy;
-  $('btn-rollback').textContent = 'Roll back to ' + (U.previous || '');
+  $('btn-rollback').textContent = t('Roll back to {v}', { v: U.previous || '' });
   $('btn-check').disabled = busy;
   $('notescard').hidden = !(L.update_available && L.notes);
   $('notes').innerHTML = md(L.notes);
   $('progress').hidden = !st.state || st.state === 'idle';
-  $('u-state').textContent = STATE_TEXT[st.state] || st.state;
+  $('u-state').textContent = t(STATE_TEXT[st.state] || st.state);
   $('u-state').className = 'state ' + (busy ? 'busy' : st.state);
   $('u-msg').textContent = st.message || '';
   $('u-log').textContent = U.log || '';
@@ -378,29 +445,30 @@ async function loadUpdate(){
 }
 
 async function checkUpdates(){
-  $('btn-check').disabled = true; $('btn-check').textContent = 'Checking…';
+  $('btn-check').disabled = true; $('btn-check').textContent = t('Checking…');
   try { await fetch('/api/update/check', {method: 'POST'}); } catch(e) {}
-  $('btn-check').textContent = 'Check for updates';
+  $('btn-check').textContent = t('Check for updates');
   loadUpdate(); status();
 }
 
 async function applyUpdate(){
   const tag = U && U.latest && U.latest.tag;
-  if (!tag || !confirm(`Install ${tag}?\n\nThe box makes a backup first and goes back automatically if the new version does not pass its self-test. A game in progress may be interrupted.`)) return;
+  if (!tag || !confirm(t('Install {tag}?', { tag }) + '\n\n' + t('The box makes a backup first and goes back automatically if the new version does not pass its self-test. A game in progress may be interrupted.'))) return;
   const r = await fetch('/api/update/apply', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tag})});
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) alert(j.error || 'Could not start the update');
+  if (!r.ok) alert(j.error || t('Could not start the update'));
   setTimeout(loadUpdate, 800);
 }
 
 async function rollback(){
-  if (!U || !U.previous || !confirm(`Go back to version ${U.previous}?\n\nSettings, players and statistics are kept.`)) return;
+  if (!U || !U.previous || !confirm(t('Go back to version {v}?', { v: U.previous }) + '\n\n' + t('Settings, players and statistics are kept.'))) return;
   const r = await fetch('/api/update/rollback', {method: 'POST'});
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) alert(j.error || 'Could not start the rollback');
+  if (!r.ok) alert(j.error || t('Could not start the rollback'));
   setTimeout(loadUpdate, 800);
 }
 
+setLanguage('auto');
 status();
 setInterval(status, 3000);
 </script>

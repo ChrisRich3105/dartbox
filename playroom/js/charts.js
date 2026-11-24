@@ -7,7 +7,7 @@ const escx = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&
  * Line chart: series = [{ name, values:[numbers], color }]. x = visit number.
  * Returns '' if there is nothing to draw.
  */
-export function lineChart(series, { height = 180, label = '' } = {}) {
+export function lineChart(series, { height = 180, label = '', xLabel = 'visits →' } = {}) {
   series = series.filter((s) => s.values && s.values.length > 1);
   if (!series.length) return '';
   const W = 640, H = height, L = 40, B = 22, T = 10, Rr = 10;
@@ -28,5 +28,5 @@ export function lineChart(series, { height = 180, label = '' } = {}) {
   const legend = series.map((s) => `<span><i style="background:${s.color}"></i>${escx(s.name)}</span>`).join('');
   return `<div class="chart"><div class="c-legend">${label ? `<b>${escx(label)}</b>` : ''}${legend}</div>
     <svg viewBox="0 0 ${W} ${H}" class="c-svg">${grid}
-    <text x="${W - Rr}" y="${H - 4}" class="c-tick" text-anchor="end">visits →</text>${lines}</svg></div>`;
+    <text x="${W - Rr}" y="${H - 4}" class="c-tick" text-anchor="end">${escx(xLabel)}</text>${lines}</svg></div>`;
 }

@@ -1,6 +1,7 @@
 // Sounds are synthesised with the Web Audio API (no audio files, nothing to license)
 // and the caller uses the browser's speech synthesis.
 import { getSettings } from './settings.js';
+import { getLang } from './i18n.js';
 
 let ctx = null, master = null, noiseBuf = null;
 
@@ -95,28 +96,117 @@ export function play(name, arg) {
 }
 
 // ------------------------------------------------------------------ caller
+// 1st choice: the box's natural neural voice (Piper, served by the playroom: /api/say),
+//             played through an "arena" chain – compressor, a bit louder/faster when hyped, hall reverb.
+// fallback:   the browser's own speech synthesis.
+let serverVoices = {};
+export async function loadServerVoices() {
+  try { serverVoices = await (await fetch('/api/voices', { cache: 'no-store' })).json(); } catch { serverVoices = {}; }
+  return serverVoices;
+}
+export const hasNaturalVoice = (lang = getLang()) => !!serverVoices[lang];
+
 export function voices() {
   return 'speechSynthesis' in window ? speechSynthesis.getVoices() : [];
 }
 
 function pickVoice() {
-  const st = getSettings(), all = voices();
-  return all.find((v) => v.name === st.voice)
-    || all.find((v) => /^en[-_]GB/i.test(v.lang))
-    || all.find((v) => /^en/i.test(v.lang))
-    || all[0] || null;
+  const st = getSettings(), all = voices(), lang = getLang();
+  const re = lang === 'de' ? /^de/i : /^en[-_]GB/i;
+  const chosen = all.find((v) => v.name === st.voice);
+  return (chosen && chosen.lang.toLowerCase().startsWith(lang) ? chosen : null)
+    || all.find((v) => re.test(v.lang))
+    || all.find((v) => v.lang.toLowerCase().startsWith(lang))
+    || chosen || all[0] || null;
 }
 
-export function say(text, { interrupt = true } = {}) {
+function browserSay(text, interrupt) {
+  if (!('speechSynthesis' in window)) return;
   const st = getSettings();
-  if (!st.sound || !st.caller || !text || !('speechSynthesis' in window)) return;
   try {
     if (interrupt) speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     const v = pickVoice();
-    if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-GB';
-    u.rate = 1.0; u.pitch = 1.0;
+    if (v) { u.voice = v; u.lang = v.lang; } else u.lang = getLang() === 'de' ? 'de-DE' : 'en-GB';
+    u.rate = 1.05; u.pitch = 1.05;
     u.volume = Math.max(0, Math.min(1, +st.volume));
     speechSynthesis.speak(u);
   } catch { /* ignore */ }
 }
+
+// --- natural voice playback
+const clipCache = new Map();          // 'lang|style|text' -> Promise<AudioBuffer>
+let voiceBus = null, reverbSend = null, queue = Promise.resolve(), generation = 0, playing = [];
+
+function bus() {
+  if (voiceBus) return voiceBus;
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -24; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.2;
+  voiceBus = ctx.createGain();
+  voiceBus.gain.value = 1.15;
+  voiceBus.connect(comp); comp.connect(master);
+  // hall: decaying noise impulse
+  const len = Math.floor(ctx.sampleRate * 1.3), ir = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const d = ir.getChannelData(c);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 3;
+  }
+  const conv = ctx.createConvolver(); conv.buffer = ir;
+  reverbSend = ctx.createGain(); reverbSend.gain.value = 0.18;
+  reverbSend.connect(conv); conv.connect(comp);
+  return voiceBus;
+}
+
+function clip(lang, part) {
+  const key = `${lang}|${part.s}|${part.t}`;
+  if (!clipCache.has(key)) {
+    const url = `/api/say?lang=${lang}&style=${part.s}&text=${encodeURIComponent(part.t)}`;
+    clipCache.set(key, fetch(url).then((r) => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      .then((b) => ctx.decodeAudioData(b)).catch((e) => { clipCache.delete(key); throw e; }));
+    if (clipCache.size > 300) clipCache.delete(clipCache.keys().next().value);
+  }
+  return clipCache.get(key);
+}
+
+function playClip(buf, style) {
+  return new Promise((resolve) => {
+    const src = ctx.createBufferSource(), g = ctx.createGain();
+    src.buffer = buf;
+    src.playbackRate.value = style === 'hype' ? 1.05 : 1.0;      // a touch faster and brighter when hyped
+    g.gain.value = style === 'hype' ? 1.35 : 1.0;
+    src.connect(g); g.connect(bus());
+    if (style === 'hype') g.connect(reverbSend); else { const w = ctx.createGain(); w.gain.value = 0.4; g.connect(w); w.connect(reverbSend); }
+    src.onended = () => { playing = playing.filter((x) => x !== src); resolve(); };
+    playing.push(src);
+    src.start();
+  });
+}
+
+/** Speak caller parts [{t, s}]; interrupt = drop whatever is still queued. */
+export function call(parts, { interrupt = true } = {}) {
+  const st = getSettings();
+  if (!st.sound || !st.caller || !parts || !parts.length) return;
+  const lang = getLang();
+  if (!st.naturalVoice || !hasNaturalVoice(lang) || !audio()) {
+    browserSay(parts.map((p) => p.t).join(' '), interrupt);
+    return;
+  }
+  if (interrupt) {
+    generation++;
+    playing.forEach((s) => { try { s.stop(); } catch { /* already stopped */ } });
+    playing = [];
+    queue = Promise.resolve();
+  }
+  const my = generation;
+  const clips = parts.map((p) => clip(lang, p).catch(() => null));        // fetch in parallel
+  queue = queue.then(async () => {
+    for (let k = 0; k < parts.length; k++) {
+      if (my !== generation) return;
+      const buf = await clips[k];
+      if (buf && my === generation) await playClip(buf, parts[k].s);
+    }
+  });
+}
+
+/** plain text (tests, fallback) */
+export function say(text, opts) { call([{ t: text, s: 'hype' }], opts); }

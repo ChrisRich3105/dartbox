@@ -128,6 +128,7 @@ class Handler(BaseHTTPRequestHandler):
             st["last_error"] = None
         st["views"] = view_urls(cfg)
         st["kiosk_start"] = cfg["KIOSK_START"]
+        st["language"] = cfg.get("LANGUAGE", "auto")
         st["hostname"] = socket.gethostname()
         rel = release_info()
         latest = read_json(os.path.join(UPD, "latest.json"), None) or {}

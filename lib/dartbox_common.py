@@ -27,6 +27,9 @@ DEFAULTS = {
     "PLAYROOM_URL": "http://localhost:8081/",
     "KIOSK_START": "autodarts",
     "POWER_BUTTON_ENABLED": "1",
+    "LANGUAGE": "auto",
+    "CALLER_VOICE_DE": "de_DE-thorsten_emotional-medium",
+    "CALLER_VOICE_EN": "en_GB-alan-medium",
 }
 
 

@@ -10,6 +10,7 @@
 #   --no-autodarts    don't install the Autodarts board client
 #   --keep-desktop    don't switch off a desktop environment (it would fight the kiosk for the screen)
 #   --no-sudo-group   don't add the user to the sudo group
+#   --no-voice        don't download the natural caller voices (Piper TTS, ~170 MB)
 #   --hostname NAME   network name of the box (default on a fresh install: dartbox -> dartbox.local);
 #                     re-runs and updates keep whatever name the box has
 #   --update          non-interactive update mode (used by dartbox-update): only refreshes the
@@ -25,6 +26,7 @@ WITH_AUTODARTS=1
 KEEP_DESKTOP=0
 SUDO_GROUP=1
 UPDATE_MODE=0
+WITH_VOICE=1
 OWNER_USER="${SUDO_USER:-}"
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -33,8 +35,9 @@ while [ $# -gt 0 ]; do
         --keep-desktop) KEEP_DESKTOP=1 ;;
         --no-sudo-group) SUDO_GROUP=0 ;;
         --update) UPDATE_MODE=1 ;;
+        --no-voice) WITH_VOICE=0 ;;
         --hostname) HOSTNAME_NEW="$2"; shift ;;
-        -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
     shift
@@ -59,11 +62,11 @@ apt_install() {
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     network-manager iw wireless-regdb python3 curl ca-certificates avahi-daemon \
-    cage chromium fonts-dejavu-core xwayland dbus-user-session sudo speech-dispatcher espeak-ng \
+    cage chromium fonts-dejavu-core xwayland dbus-user-session sudo speech-dispatcher espeak-ng pipewire pipewire-pulse pipewire-alsa wireplumber \
     firmware-iwlwifi firmware-atheros firmware-realtek 2>/dev/null \
   || DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     network-manager iw wireless-regdb python3 curl ca-certificates avahi-daemon \
-    cage chromium fonts-dejavu-core xwayland dbus-user-session sudo speech-dispatcher espeak-ng
+    cage chromium fonts-dejavu-core xwayland dbus-user-session sudo speech-dispatcher espeak-ng pipewire pipewire-pulse pipewire-alsa wireplumber
 }
 # (firmware packages need "non-free-firmware" in sources.list - second attempt skips them)
 if [ "$UPDATE_MODE" = 1 ]; then
@@ -221,6 +224,44 @@ if [ "$WITH_AUTODARTS" = 1 ] && [ "$UPDATE_MODE" = 0 ]; then
             echo "==> Autodarts: boot service already set up"
         fi
     fi
+fi
+
+# ---------------------------------------------------------------- natural caller voice (Piper TTS)
+# Neural text-to-speech that runs offline on the box. Downloaded from the official sources
+# (github.com/rhasspy/piper, huggingface.co/rhasspy/piper-voices); voices have their own licenses.
+if [ "$WITH_VOICE" = 1 ]; then
+    . /etc/dartbox/dartbox.conf
+    PIPER_DIR=/opt/dartbox/piper
+    VOICE_DIR=/var/lib/dartbox/voices
+    install -d "$VOICE_DIR" /var/lib/dartbox/voice-cache
+    if [ ! -x "$PIPER_DIR/piper" ]; then
+        case "$(uname -m)" in
+            x86_64) PARCH=x86_64 ;; aarch64|arm64) PARCH=aarch64 ;; armv7l) PARCH=armv7l ;; *) PARCH="" ;;
+        esac
+        if [ -n "$PARCH" ]; then
+            echo "==> Installing Piper (natural caller voice engine)"
+            if curl -fsSL --retry 3 "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_${PARCH}.tar.gz" \
+                | tar -xz -C /opt/dartbox; then
+                echo "    Piper installed in $PIPER_DIR"
+            else
+                echo "    (Piper download failed - the caller uses the browser voice; re-run the installer later)"
+            fi
+        fi
+    fi
+    for V in "${CALLER_VOICE_DE:-de_DE-thorsten_emotional-medium}" "${CALLER_VOICE_EN:-en_GB-alan-medium}"; do
+        [ -n "$V" ] || continue
+        [ -s "$VOICE_DIR/$V.onnx" ] && [ -s "$VOICE_DIR/$V.onnx.json" ] && continue
+        # name = <lang>_<REGION>-<voice>-<quality>  ->  <lang>/<lang>_<REGION>/<voice>/<quality>/<name>.onnx
+        CODE=${V%%-*}; REST=${V#*-}; QUAL=${REST##*-}; VNAME=${REST%-*}; LANG2=${CODE%%_*}
+        URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/$LANG2/$CODE/$VNAME/$QUAL/$V"
+        echo "==> Downloading caller voice $V"
+        if curl -fsSL --retry 3 -o "$VOICE_DIR/$V.onnx.part" "$URL.onnx" && curl -fsSL --retry 3 -o "$VOICE_DIR/$V.onnx.json" "$URL.onnx.json"; then
+            mv "$VOICE_DIR/$V.onnx.part" "$VOICE_DIR/$V.onnx"
+        else
+            rm -f "$VOICE_DIR/$V.onnx.part"
+            echo "    (download of $V failed - that language falls back to the browser voice)"
+        fi
+    done
 fi
 
 # Running services pick up the new files (no-op on a first install before the reboot)

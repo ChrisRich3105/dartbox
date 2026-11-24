@@ -4,11 +4,13 @@ const KEY = 'pr.settings';
 const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export const DEFAULTS = {
+  lang: 'auto',         // 'auto' (box setting / browser), 'de', 'en'
   sound: true,          // master switch for all sounds
   volume: 0.7,
   dartSounds: true,     // a "thud" for every dart
   eventSounds: true,    // bust, 180, checkout, win, target hit
-  caller: false,        // spoken caller (needs voices on the device)
+  caller: false,        // spoken caller
+  naturalVoice: true,   // use the box's natural voice (Piper) when installed
   voice: '',            // speechSynthesis voice name ('' = automatic English)
   effects: true,        // big on-screen celebrations
   confetti: true,       // confetti for 180 / wins
@@ -19,12 +21,16 @@ export const DEFAULTS = {
 };
 
 export const DESCRIPTIONS = [
+  ['Language', [
+    ['lang', 'Language', 'Language of the playroom and the caller.', 'lang'],
+  ]],
   ['Sound', [
     ['sound', 'Sounds', 'Master switch for all sounds on this device.'],
     ['volume', 'Volume', null, 'range'],
     ['dartSounds', 'Dart sounds', 'A short sound for every dart – higher for doubles and trebles.'],
     ['eventSounds', 'Event sounds', 'Bust, target hit, 180, checkout, leg and match won.'],
     ['caller', 'Caller (voice)', 'Calls scores and "you require …" like on TV. Needs a voice on this device.'],
+    ['naturalVoice', 'Natural voice (on the box)', null, 'natural'],
     ['voice', 'Voice', null, 'voice'],
   ]],
   ['Visuals', [

@@ -12,6 +12,7 @@
 - No known WiFi → it opens its own hotspot with a setup page.
 - No internet / no Autodarts subscription needed for the built-in **local playroom** with 9 games, 6 training modes and statistics.
 - Updates itself from GitHub releases – with release notes, one-click update and automatic rollback.
+- English and **German** (Deutsch) – UI and caller. 🇩🇪 [Kurzanleitung auf Deutsch](README.de.md)
 
 > Dartbox is a community project and **not affiliated with Autodarts**. It installs the official Autodarts board client and uses its local interface.
 
@@ -118,6 +119,7 @@ sudo bash install.sh            # or: su - -c "bash $PWD/install.sh --user $USER
 | `--no-autodarts` | don't install the Autodarts client |
 | `--keep-desktop` | leave a desktop environment's autostart alone (it will fight the kiosk for the screen) |
 | `--no-sudo-group` | don't add the user to the `sudo` group |
+| `--no-voice` | don't download the natural caller voices (~170 MB) |
 | `--hostname NAME` | network name, e.g. `autodarts` → `http://autodarts.local/` (default on a fresh install: `dartbox`; updates keep the current name) |
 | `DARTBOX_HOSTNAME=name` | other hostname than `dartbox` (environment variable) |
 
@@ -187,9 +189,12 @@ Everything can be switched off in **⚙ Settings** (per device, so the box's scr
 |---|---|
 | Sounds, volume | master switch for everything audible |
 | Dart sounds / event sounds | per dart, or only bust / 180 / checkout / win / target hit |
-| Caller, voice | spoken scores; needs a voice on the device (the installer adds one to the box) |
+| Language | Deutsch / English / automatic (browser language, or the box default `LANGUAGE`) |
+| Caller, natural voice, voice | spoken scores; on the box a natural neural voice (see below), elsewhere the device's own voice |
 | Celebrations, confetti, animations | big messages, confetti, counting scores; animations follow the system's "reduce motion" setting |
 | Dartboard view, on phones, show targets | the board panel (wide screens by default) and the target highlights |
+
+**The caller** – on the box, Dartbox speaks with a natural neural voice ([Piper](https://github.com/rhasspy/piper), runs offline, no cloud): German "Thorsten" (emotional variant – an excited style for 180s, checkouts and wins) and British "Alan" in English. Big moments are louder, a touch faster and get some arena reverb; ton-forty-plus scores sometimes get praise ("Great darts!" / "Klasse Darts!"). Phrases are rendered once in the background and cached, so calls are instant. Phones and PCs use their own system voice. Other voices: pick one from [piper-voices](https://huggingface.co/rhasspy/piper-voices), set `CALLER_VOICE_DE` / `CALLER_VOICE_EN` and re-run the installer.
 
 **Statistics** – per player: an all-time hit map ("where your darts land"), X01 average, first-9 average, checkout %, highest checkout, best leg, 180s / 140+ / 100+, Cricket MPR, Bob's 27, doubles heat map, checkout and target practice rates, trend charts, recent sessions (wrong records can be deleted).
 
@@ -257,6 +262,8 @@ Everything lives in **`/etc/dartbox/dartbox.conf`**. After a change: `sudo syste
 | `BOARD_MANAGER_URL` | `http://localhost:3180` | Autodarts board manager (also the playroom's dart source) |
 | `PLAYROOM_URL` | `http://localhost:8081/` | empty = hide the playroom |
 | `POWER_BUTTON_ENABLED` | `1` | `0` = normal power button behaviour |
+| `LANGUAGE` | `auto` | default language of hub and playroom: `auto` (browser), `de`, `en`; each device can override it in ⚙ Settings |
+| `CALLER_VOICE_DE` / `CALLER_VOICE_EN` | `de_DE-thorsten_emotional-medium` / `en_GB-alan-medium` | natural caller voices (Piper); empty = device voice |
 | `UPDATE_CHECK` | `1` | automatic update checks |
 | `UPDATE_CHANNEL` | `stable` | `beta` = also pre-releases |
 | `UPDATE_REPO` | from `release.conf` | install updates from a fork (`owner/name`) |
@@ -276,7 +283,7 @@ Your data: `/var/lib/dartbox/playroom/` (players and statistics) – back it up 
 | Screen stays black / shows a login | A desktop environment is still active: `sudo systemctl set-default multi-user.target && sudo systemctl disable display-manager` and reboot. |
 | Box not reachable as `dartbox.local` | Some networks/Windows setups don't resolve `.local` – use the IP address (shown in your router or on the hub). Type it with a slash (`dartbox.local/`) so the browser doesn't search for it. With a FRITZ!Box, `http://dartbox/` usually works too. |
 | Want another name (e.g. `autodarts.local`) | `sudo hostnamectl set-hostname autodarts && sudo systemctl restart avahi-daemon` – updates keep it. |
-| No sound / no caller on the box's screen | Check ⚙ Settings in the playroom (sounds on, volume), and that the TV/monitor has audio over HDMI/DP. The caller needs a voice: `sudo apt install speech-dispatcher espeak-ng`. |
+| No sound / no caller on the box's screen | Check ⚙ Settings in the playroom (sounds and caller on, volume) and that the TV/monitor has audio over HDMI/DP and isn't muted. After installing, reboot once (PipeWire). Natural voice missing? `ls /var/lib/dartbox/voices` – re-run the installer to download it. |
 | Something else | `sudo dartbox-selftest`, and the logs: `journalctl -u 'dartbox-*' -b` |
 
 Commands in Windows **Command Prompt**: quotes and `|` inside ssh commands get mangled – rather log in with `ssh user@ip` and type the commands on the box.
@@ -338,4 +345,4 @@ The link also appears in the hub (System tab and page footer) and in the playroo
 
 ## License
 
-[MIT](LICENSE). Autodarts is a trademark of its respective owners; this project is not affiliated with or endorsed by Autodarts.
+[MIT](LICENSE). The caller voices are downloaded at install time from their original sources and keep their own licenses (Thorsten: CC0; Alan: see [piper-voices](https://huggingface.co/rhasspy/piper-voices)); Piper itself is MIT-licensed. Autodarts is a trademark of its respective owners; this project is not affiliated with or endorsed by Autodarts.

@@ -5,6 +5,16 @@ All notable changes. The section of a version is used as its GitHub release note
 
 Format: `## vX.Y.Z – YYYY-MM-DD`, newest first.
 
+## v1.2.0 – 2026-11-25
+
+Jetzt auch auf Deutsch – and a caller with some energy.
+
+- **German version:** the playroom (all games, training, statistics, settings) and the hub are available in German. Language follows the browser, can be set for the whole box (`LANGUAGE=de`) or per device in ⚙ Settings.
+- **Natural caller voice:** the box now speaks with a neural voice (Piper TTS, runs offline) instead of the robotic system voice – German "Thorsten" with an excited style for 180s and checkouts, British "Alan" in English. Big moments get a louder, slightly faster delivery with a touch of arena reverb, plus a bit of praise ("Great darts!", "Klasse Darts!").
+- **Caller in German:** "Hundertachtzig!", "Anna, du brauchst 32.", "Überworfen!", "gewinnt das Leg!"
+- **Sound on the TV:** the installer adds PipeWire so the kiosk browser plays sound through HDMI/DisplayPort.
+- New installer option `--no-voice` to skip the voice download (~170 MB).
+
 ## v1.1.0 – 2026-11-25
 
 Looks and sounds like a real darts night – and every bit of it can be switched off.
