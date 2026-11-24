@@ -1,0 +1,243 @@
+#!/usr/bin/env python3
+"""dartbox-netmgr: keeps the box online, falls back to a setup hotspot.
+
+This daemon is the single owner of the WiFi state. Other components (web UI,
+power button, USB reset) only drop request files into /run/dartbox/requests/:
+
+    {"action": "connect", "ssid": "...", "password": "...", "security": "...", "hidden": false}
+    {"action": "hotspot"}          -> enter setup mode until a network is configured or reboot
+    {"action": "forget_all"}       -> delete all saved WiFi networks, enter setup mode
+
+State machine (checked every few seconds):
+    forced hotspot              -> hotspot up
+    online (WiFi or ethernet)   -> hotspot down
+    offline, no saved WiFi      -> hotspot up immediately
+    offline > CONNECT_GRACE     -> hotspot up
+    hotspot up, no clients, every RETRY_INTERVAL -> briefly retry saved WiFi
+"""
+import glob
+import json
+import os
+import sys
+import time
+
+sys.path.insert(0, "/usr/local/lib/dartbox")
+from dartbox_common import (  # noqa: E402
+    FORCE_HOTSPOT, HOTSPOT_CON, LAST_ERROR, RUN_DIR, SCAN_CACHE, STATUS_FILE,
+    ensure_dirs, forget_all_wifi, hotspot_active, load_config, log, nm_split,
+    online_connection, remove, run, saved_wifi_connections, scan_networks,
+    touch, wifi_iface, wifi_mac_suffix, write_json,
+)
+
+REQ_DIR = os.path.join(RUN_DIR, "requests")
+
+
+class NetMgr:
+    def __init__(self):
+        self.cfg = load_config()
+        self.iface = None
+        self.last_online = time.monotonic()
+        self.hotspot_since = None
+        self.last_retry = time.monotonic()
+        self.mode = "starting"
+
+    # ------------------------------------------------------------------ helpers
+    @property
+    def hotspot_ssid(self):
+        return f"{self.cfg['HOTSPOT_SSID_PREFIX']}-{wifi_mac_suffix(self.iface)}"
+
+    def cache_scan(self):
+        nets = scan_networks(rescan=True)
+        if nets:
+            write_json(SCAN_CACHE, {"time": time.time(), "networks": nets})
+        return nets
+
+    def hotspot_clients(self):
+        rc, out, _ = run(["iw", "dev", self.iface, "station", "dump"])
+        return out.count("Station ") if rc == 0 else 0
+
+    def current_ip(self):
+        _, out, _ = run(["nmcli", "-t", "-f", "IP4.ADDRESS", "device", "show", self.iface])
+        for line in out.splitlines():
+            if ":" in line:
+                return line.split(":", 1)[1].split("/")[0]
+        return None
+
+    def write_status(self, online_name=None):
+        write_json(STATUS_FILE, {
+            "mode": self.mode,
+            "connection": online_name,
+            "ip": self.current_ip() if self.iface else None,
+            "hotspot_ssid": self.hotspot_ssid if self.iface else None,
+            "hotspot_password": self.cfg["HOTSPOT_PASSWORD"],
+            "hotspot_address": self.cfg["HOTSPOT_ADDRESS"],
+            "forced": os.path.exists(FORCE_HOTSPOT),
+            "saved_networks": saved_wifi_connections(),
+            "time": time.time(),
+        })
+
+    # ------------------------------------------------------------------ hotspot
+    def create_hotspot_profile(self):
+        run(["nmcli", "connection", "delete", HOTSPOT_CON])
+        args = ["nmcli", "connection", "add", "type", "wifi", "ifname", self.iface,
+                "con-name", HOTSPOT_CON, "autoconnect", "no", "ssid", self.hotspot_ssid,
+                "802-11-wireless.mode", "ap", "802-11-wireless.band", "bg",
+                "ipv4.method", "shared", "ipv4.addresses", f"{self.cfg['HOTSPOT_ADDRESS']}/24",
+                "ipv6.method", "disabled"]
+        pw = self.cfg["HOTSPOT_PASSWORD"]
+        if pw:
+            args += ["wifi-sec.key-mgmt", "wpa-psk", "wifi-sec.psk", pw,
+                     "wifi-sec.proto", "rsn", "wifi-sec.pairwise", "ccmp",
+                     "wifi-sec.group", "ccmp", "wifi-sec.pmf", "disable"]
+        run(args, check=True)
+
+    def start_hotspot(self):
+        log("starting hotspot", self.hotspot_ssid)
+        self.cache_scan()                 # radio is free now - scan before AP takes it
+        self.create_hotspot_profile()
+        rc, _, err = run(["nmcli", "--wait", "30", "connection", "up", HOTSPOT_CON], timeout=40)
+        if rc != 0:
+            log("hotspot failed:", err.strip())
+            return False
+        self.hotspot_since = self.last_retry = time.monotonic()
+        self.mode = "hotspot"
+        return True
+
+    def stop_hotspot(self):
+        if hotspot_active():
+            log("stopping hotspot")
+            run(["nmcli", "connection", "down", HOTSPOT_CON])
+        self.hotspot_since = None
+
+    # ------------------------------------------------------------------ client
+    def try_saved_networks(self):
+        """Bring hotspot down and try every saved network that is in range."""
+        self.stop_hotspot()
+        self.mode = "connecting"
+        self.write_status()
+        visible = {n["ssid"] for n in self.cache_scan()}
+        _, out, _ = run(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"])
+        for line in out.splitlines():
+            name, typ = nm_split(line)[:2]
+            if typ != "802-11-wireless" or name == HOTSPOT_CON:
+                continue
+            _, ssid, _ = run(["nmcli", "-g", "802-11-wireless.ssid", "connection", "show", name])
+            if visible and ssid.strip() not in visible:
+                continue
+            log("trying", name)
+            t = self.cfg["RETRY_TIMEOUT"]
+            rc, _, _ = run(["nmcli", "--wait", t, "connection", "up", name], timeout=int(t) + 10)
+            if rc == 0:
+                log("connected to", name)
+                self.last_online = time.monotonic()
+                return True
+        return False
+
+    def connect_new(self, ssid, password, security="", hidden=False):
+        log("connecting to new network", repr(ssid))
+        remove(LAST_ERROR)
+        self.stop_hotspot()
+        self.mode = "connecting"
+        self.write_status()
+        run(["nmcli", "connection", "delete", ssid])
+        args = ["nmcli", "connection", "add", "type", "wifi", "ifname", self.iface,
+                "con-name", ssid, "ssid", ssid, "connection.autoconnect", "yes",
+                "802-11-wireless.powersave", "2"]          # 2 = disable powersave
+        if hidden:
+            args += ["802-11-wireless.hidden", "yes"]
+        if password:
+            sae_only = "WPA3" in security and "WPA2" not in security and "WPA1" not in security
+            args += ["wifi-sec.key-mgmt", "sae" if sae_only else "wpa-psk", "wifi-sec.psk", password]
+        rc, _, err = run(args)
+        if rc == 0:
+            t = self.cfg["RETRY_TIMEOUT"]
+            rc, _, err = run(["nmcli", "--wait", t, "connection", "up", ssid], timeout=int(t) + 10)
+        if rc == 0:
+            log("connected to", ssid)
+            remove(FORCE_HOTSPOT)
+            self.last_online = time.monotonic()
+            return True
+        msg = f"Could not connect to '{ssid}': {err.strip() or 'unknown error'}"
+        log(msg)
+        with open(LAST_ERROR, "w") as f:
+            f.write(msg)
+        run(["nmcli", "connection", "delete", ssid])   # don't keep wrong credentials
+        self.start_hotspot()
+        return False
+
+    # ------------------------------------------------------------------ requests
+    def handle_requests(self):
+        for path in sorted(glob.glob(os.path.join(REQ_DIR, "*.json"))):
+            try:
+                with open(path) as f:
+                    req = json.load(f)
+            except (OSError, ValueError):
+                req = {}
+            remove(path)
+            action = req.get("action")
+            log("request:", action)
+            if action == "connect" and req.get("ssid"):
+                self.connect_new(req["ssid"], req.get("password", ""),
+                                 req.get("security", ""), bool(req.get("hidden")))
+            elif action == "hotspot":
+                touch(FORCE_HOTSPOT)
+            elif action == "forget_all":
+                self.stop_hotspot()
+                forget_all_wifi()
+                touch(FORCE_HOTSPOT)
+            elif action == "rescan" and hotspot_active():
+                # Many WiFi chips cannot scan while in AP mode: drop AP for a moment.
+                self.stop_hotspot()
+                time.sleep(2)
+                self.start_hotspot()
+
+    # ------------------------------------------------------------------ main loop
+    def tick(self):
+        self.iface = self.iface or wifi_iface()
+        if not self.iface:
+            self.mode = "no-wifi-adapter"
+            return
+        self.handle_requests()
+        now = time.monotonic()
+        online = online_connection()
+        hs = hotspot_active()
+        forced = os.path.exists(FORCE_HOTSPOT)
+
+        if forced:
+            if not hs:
+                self.start_hotspot()
+            self.mode = "hotspot"
+        elif online:
+            self.last_online = now
+            if hs:
+                self.stop_hotspot()
+            self.mode = "online"
+        elif hs:
+            self.mode = "hotspot"
+            retry_due = now - self.last_retry > int(self.cfg["RETRY_INTERVAL"])
+            if retry_due and saved_wifi_connections() and self.hotspot_clients() == 0:
+                self.last_retry = now
+                if not self.try_saved_networks():
+                    self.start_hotspot()
+        else:
+            self.mode = "offline"
+            no_saved = not saved_wifi_connections()
+            if no_saved or now - self.last_online > int(self.cfg["CONNECT_GRACE"]):
+                self.start_hotspot()
+        self.write_status(online_connection())
+
+    def run(self):
+        ensure_dirs()
+        os.makedirs(REQ_DIR, exist_ok=True)
+        os.chmod(REQ_DIR, 0o700)
+        log("dartbox-netmgr started")
+        while True:
+            try:
+                self.tick()
+            except Exception as e:  # keep the daemon alive no matter what
+                log("error:", e)
+            time.sleep(3)
+
+
+if __name__ == "__main__":
+    NetMgr().run()

@@ -1,0 +1,39 @@
+#!/bin/bash
+# dartbox-kiosk: runs on tty7 as user "dartbox" (see dartbox-kiosk.service).
+# Waits until a monitor is connected, then starts a fullscreen browser in the
+# cage Wayland kiosk compositor. Without a monitor it just idles (headless mode).
+
+display_connected() {
+    for s in /sys/class/drm/card*-*/status; do
+        [ "$(cat "$s" 2>/dev/null)" = "connected" ] && return 0
+    done
+    return 1
+}
+
+until display_connected; do
+    sleep 5
+done
+
+# Hide the mouse pointer after 1s of inactivity is done by cage itself (-d = no decorations)
+export XDG_SESSION_TYPE=wayland
+PROFILE="$HOME/.config/dartbox-chromium"
+mkdir -p "$PROFILE"
+
+# Clear "Chromium didn't shut down correctly" bubble after power loss
+sed -i 's/"exited_cleanly":false/"exited_cleanly":true/; s/"exit_type":"[^"]*"/"exit_type":"Normal"/' \
+    "$PROFILE/Default/Preferences" 2>/dev/null
+
+exec cage -d -s -- chromium \
+    --ozone-platform=wayland \
+    --kiosk \
+    --user-data-dir="$PROFILE" \
+    --no-first-run \
+    --noerrdialogs \
+    --disable-infobars \
+    --disable-session-crashed-bubble \
+    --disable-features=Translate,TranslateUI \
+    --check-for-update-interval=31536000 \
+    --autoplay-policy=no-user-gesture-required \
+    --password-store=basic \
+    --load-extension=/usr/local/share/dartbox/kiosk-extension \
+    http://localhost/start

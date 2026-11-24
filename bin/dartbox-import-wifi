@@ -1,0 +1,18 @@
+#!/bin/bash
+# One-shot: import WiFi credentials that install.sh migrated out of
+# /etc/network/interfaces into NetworkManager. File format: SSID=... / PASSWORD=...
+F=/var/lib/dartbox/pending-wifi
+[ -f "$F" ] || exit 0
+SSID=$(sed -n 's/^SSID=//p' "$F" | head -n1)
+PASS=$(sed -n 's/^PASSWORD=//p' "$F" | head -n1)
+WL=$(nmcli -t -f DEVICE,TYPE device | awk -F: '$2=="wifi"{print $1; exit}')
+if [ -n "$SSID" ] && [ -n "$WL" ]; then
+    nmcli connection delete "$SSID" >/dev/null 2>&1
+    if [ -n "$PASS" ]; then
+        nmcli connection add type wifi ifname "$WL" con-name "$SSID" ssid "$SSID" \
+            wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASS"
+    else
+        nmcli connection add type wifi ifname "$WL" con-name "$SSID" ssid "$SSID"
+    fi
+fi
+rm -f "$F"

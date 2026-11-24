@@ -1,0 +1,54 @@
+# Push a tag like v1.2.0 -> tests run -> a GitHub release is published with the notes from
+# CHANGELOG.md. Installed boxes find it within a few hours (or via "Check for updates").
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag must match VERSION
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VER="$(tr -d '[:space:]' < VERSION)"
+          if [ "${TAG#v}" != "$VER" ]; then
+            echo "::error::Tag $TAG does not match VERSION file ($VER). Bump VERSION before tagging."
+            exit 1
+          fi
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          # section "## v1.2.0 – date" (or "## 1.2.0") up to the next "## "
+          awk -v v="$VER" '
+            $0 ~ "^## v?" v "([^0-9A-Za-z.-]|$)" { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "No CHANGELOG.md section for $VER - using generated notes"
+            : > notes.md
+          fi
+          cat notes.md
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          ARGS=(--title "Dartbox $TAG")
+          if [ -s notes.md ]; then ARGS+=(--notes-file notes.md); else ARGS+=(--generate-notes); fi
+          case "$TAG" in *-*) ARGS+=(--prerelease) ;; esac
+          gh release create "$TAG" "${ARGS[@]}"

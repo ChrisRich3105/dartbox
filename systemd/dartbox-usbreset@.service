@@ -1,0 +1,6 @@
+[Unit]
+Description=Dartbox USB reset/config stick check (%i)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/dartbox-usbreset %i

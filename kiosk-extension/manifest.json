@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Dartbox kiosk",
+  "version": "1.0",
+  "description": "Home button back to the dartbox hub on every page, and remote screen switching from the hub.",
+  "background": { "service_worker": "background.js" },
+  "permissions": ["storage", "alarms"],
+  "host_permissions": ["http://localhost/*"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

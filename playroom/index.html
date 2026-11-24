@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dartbox Playroom</title>
+<!-- has its own "Hub" link; tells the kiosk extension not to overlay its 🎯 button on the keypad -->
+<meta name="dartbox-no-home-button" content="1">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header id="top">
+  <a href="#/" class="brand">🎯 Playroom</a>
+  <nav>
+    <a href="#/" data-nav="home">Play</a>
+    <a href="#/stats" data-nav="stats">Stats</a>
+    <a href="#/players" data-nav="players">Players</a>
+  </nav>
+  <button id="boardchip" class="chip" title="Automatic dart detection (Autodarts board manager)">Board …</button>
+  <a id="hublink" class="chip" href="#">Hub</a>
+</header>
+<main id="app"></main>
+<div id="toast" hidden></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

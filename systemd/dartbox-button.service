@@ -1,0 +1,11 @@
+[Unit]
+Description=Dartbox power button handler (1x shutdown, 3x setup mode, 5x forget WiFi)
+After=systemd-logind.service
+
+[Service]
+ExecStart=/usr/local/bin/dartbox-button
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

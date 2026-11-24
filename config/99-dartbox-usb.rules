@@ -1,0 +1,2 @@
+# Check every USB storage filesystem for dartbox reset / WiFi config files
+ACTION=="add", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", ENV{ID_FS_USAGE}=="filesystem", TAG+="systemd", ENV{SYSTEMD_WANTS}+="dartbox-usbreset@%k.service"

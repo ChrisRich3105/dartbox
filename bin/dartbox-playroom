@@ -1,0 +1,331 @@
+#!/usr/bin/env python3
+"""dartbox-playroom: local darts games + training, no cloud needed (port 8081).
+
+Serves the playroom web app and a small JSON API:
+
+  GET    /api/players                    remembered player names
+  POST   /api/players        {name}      add (or return existing) player
+  PUT    /api/players/<id>   {name}      rename
+  DELETE /api/players/<id>               forget player (history is kept)
+  POST   /api/players/touch  {ids:[..]}  mark players as recently used
+
+  GET    /api/history[?player=<id>]      finished games / training sessions
+  POST   /api/history        {...}       store a finished game
+  DELETE /api/history/<id>               delete one record
+
+  GET    /api/active                     running game (for resume / remote keypad)
+  PUT    /api/active         {...}       host saves the running game
+  DELETE /api/active                     game finished / abandoned
+
+  GET    /api/input?since=N              remote keypad inputs for the host
+  POST   /api/input          {...}       remote keypad sends a dart / undo / next
+
+  GET    /api/about                      version, support link, update hint
+  GET    /api/board                      normalised Autodarts board manager state
+  POST   /api/board/reset                reset the board manager (stuck takeout)
+
+Data lives in /var/lib/dartbox/playroom (override with DARTBOX_PLAYROOM_DATA).
+"""
+import json
+import os
+import sys
+import threading
+import time
+import urllib.request
+import uuid
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+sys.path.insert(0, "/usr/local/lib/dartbox")
+try:
+    from dartbox_common import load_config, release_info
+except ImportError:                                    # running outside the box
+    def load_config():
+        return {"BOARD_MANAGER_URL": "http://localhost:3180"}
+
+    def release_info():
+        return {"version": "dev", "support_url": ""}
+
+
+def about():
+    rel = release_info()
+    latest = read_json(os.path.join(os.environ.get("DARTBOX_VAR", "/var/lib/dartbox"), "update", "latest.json"), {}) or {}
+    return {"version": rel.get("version"), "support_url": rel.get("support_url", ""),
+            "update_available": bool(latest.get("update_available")) and latest.get("installed") == rel.get("version"),
+            "update_tag": latest.get("tag")}
+
+DATA = os.environ.get("DARTBOX_PLAYROOM_DATA", "/var/lib/dartbox/playroom")
+STATIC = os.environ.get("DARTBOX_PLAYROOM_STATIC", "/usr/local/share/dartbox/playroom")
+PORT = int(os.environ.get("DARTBOX_PLAYROOM_PORT", "8081"))
+PLAYERS = os.path.join(DATA, "players.json")
+HISTORY = os.path.join(DATA, "history.jsonl")
+ACTIVE = os.path.join(DATA, "active.json")
+
+LOCK = threading.Lock()
+INPUT = {"seq": 0, "items": []}          # remote keypad queue (in memory)
+BOARD_CACHE = {"t": 0.0, "data": None}
+
+MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+        ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json",
+        ".png": "image/png", ".ico": "image/x-icon"}
+
+
+# ------------------------------------------------------------------ storage
+def read_json(path, default):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def write_json(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+def read_history():
+    out = []
+    try:
+        with open(HISTORY, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        out.append(json.loads(line))
+                    except ValueError:
+                        pass
+    except OSError:
+        pass
+    return out
+
+
+def write_history(records):
+    tmp = HISTORY + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        for r in records:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    os.replace(tmp, HISTORY)
+
+
+# ------------------------------------------------------------------ board manager
+def norm_dart(t):
+    """Board manager dart (2.0 nested or 2.1 flat) -> {n, m, name}. n=25 is bull, m=0 is a miss."""
+    seg = t.get("segment") if isinstance(t.get("segment"), dict) else None
+    if seg is not None:
+        name, num, mult, bed = seg.get("name"), seg.get("number"), seg.get("multiplier"), seg.get("bed")
+    else:
+        name, num, mult, bed = t.get("segmentName"), t.get("segmentNumber"), t.get("multiplier"), t.get("bed")
+    try:
+        num, mult = int(num or 0), int(mult or 0)
+    except (TypeError, ValueError):
+        num, mult = 0, 0
+    if bed == "Outside" or mult <= 0 or num <= 0:
+        return {"n": 0, "m": 0, "name": name or "Miss"}
+    if num == 25 or str(name).lower().startswith("bull"):
+        return {"n": 25, "m": 2 if mult >= 2 else 1, "name": name}
+    return {"n": num, "m": max(1, min(3, mult)), "name": name}
+
+
+def board_state():
+    now = time.monotonic()
+    with LOCK:
+        if BOARD_CACHE["data"] is not None and now - BOARD_CACHE["t"] < 0.2:
+            return BOARD_CACHE["data"]
+    url = load_config().get("BOARD_MANAGER_URL", "http://localhost:3180").rstrip("/") + "/api/state"
+    try:
+        with urllib.request.urlopen(url, timeout=1.5) as r:
+            st = json.loads(r.read() or b"{}")
+        data = {
+            "ok": True,
+            "connected": bool(st.get("connected", True)),
+            "running": bool(st.get("running", True)),
+            # "Takeout in progress" / "takeoutInProgress" -> "takeoutinprogress"
+            "status": str(st.get("status", "")).replace(" ", "").lower(),
+            "event": str(st.get("event", "")).replace(" ", "").lower(),
+            "throws": [norm_dart(t) for t in (st.get("throws") or []) if isinstance(t, dict)],
+        }
+    except Exception as e:  # board manager not installed / not running
+        data = {"ok": False, "error": str(e)[:200], "throws": []}
+    with LOCK:
+        BOARD_CACHE.update(t=now, data=data)
+    return data
+
+
+def board_reset():
+    url = load_config().get("BOARD_MANAGER_URL", "http://localhost:3180").rstrip("/") + "/api/reset"
+    req = urllib.request.Request(url, data=b"", method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=3):
+            return True
+    except Exception:
+        return False
+
+
+# ------------------------------------------------------------------ HTTP
+class Handler(BaseHTTPRequestHandler):
+    server_version = "dartbox-playroom"
+
+    def log_message(self, fmt, *args):
+        pass
+
+    def send(self, code, body, ctype="application/json"):
+        data = body if isinstance(body, bytes) else (
+            json.dumps(body, ensure_ascii=False) if not isinstance(body, str) else body).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def body(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        if n > 5_000_000:
+            return {}
+        try:
+            return json.loads(self.rfile.read(n) or b"{}")
+        except ValueError:
+            return {}
+
+    def parts(self):
+        path, _, query = self.path.partition("?")
+        q = dict(p.split("=", 1) for p in query.split("&") if "=" in p)
+        return [p for p in path.split("/") if p], q
+
+    # -------------------------------------------------------------- GET
+    def do_GET(self):
+        parts, q = self.parts()
+        if parts[:1] != ["api"]:
+            return self.static(parts)
+        what = parts[1] if len(parts) > 1 else ""
+        if what == "players":
+            players = read_json(PLAYERS, [])
+            players.sort(key=lambda p: -p.get("lastUsed", 0))
+            return self.send(200, players)
+        if what == "history":
+            recs = read_history()
+            pid = q.get("player")
+            if pid:
+                recs = [r for r in recs if any(p.get("id") == pid for p in r.get("players", []))]
+            return self.send(200, recs)
+        if what == "active":
+            return self.send(200, read_json(ACTIVE, None))
+        if what == "input":
+            since = int(q.get("since", "0") or 0)
+            with LOCK:
+                items = [i for i in INPUT["items"] if i["seq"] > since]
+                return self.send(200, {"seq": INPUT["seq"], "items": items})
+        if what == "about":
+            return self.send(200, about())
+        if what == "board":
+            return self.send(200, board_state())
+        return self.send(404, {"error": "not found"})
+
+    def static(self, parts):
+        rel = "/".join(parts) or "index.html"
+        path = os.path.realpath(os.path.join(STATIC, rel))
+        if not path.startswith(os.path.realpath(STATIC)) or not os.path.isfile(path):
+            path = os.path.join(STATIC, "index.html")
+        with open(path, "rb") as f:
+            data = f.read()
+        return self.send(200, data, MIME.get(os.path.splitext(path)[1], "application/octet-stream"))
+
+    # -------------------------------------------------------------- POST / PUT / DELETE
+    def do_POST(self):
+        parts, _ = self.parts()
+        data = self.body()
+        what = parts[1] if len(parts) > 1 else ""
+        sub = parts[2] if len(parts) > 2 else ""
+        if what == "players" and sub == "touch":
+            ids = set(data.get("ids") or [])
+            with LOCK:
+                players = read_json(PLAYERS, [])
+                now = time.time()
+                for p in players:
+                    if p["id"] in ids:
+                        p["lastUsed"] = now
+                write_json(PLAYERS, players)
+            return self.send(200, {"ok": True})
+        if what == "players":
+            name = " ".join(str(data.get("name", "")).split())[:24]
+            if not name:
+                return self.send(400, {"error": "name required"})
+            with LOCK:
+                players = read_json(PLAYERS, [])
+                for p in players:
+                    if p["name"].lower() == name.lower():
+                        return self.send(200, p)
+                p = {"id": uuid.uuid4().hex[:10], "name": name, "created": time.time(), "lastUsed": time.time()}
+                players.append(p)
+                write_json(PLAYERS, players)
+            return self.send(200, p)
+        if what == "history":
+            data.setdefault("id", uuid.uuid4().hex[:12])
+            data.setdefault("ts", time.time())
+            with LOCK, open(HISTORY, "a", encoding="utf-8") as f:
+                f.write(json.dumps(data, ensure_ascii=False) + "\n")
+            return self.send(200, {"ok": True, "id": data["id"]})
+        if what == "input":
+            with LOCK:
+                INPUT["seq"] += 1
+                item = {"seq": INPUT["seq"], "action": data.get("action"), "dart": data.get("dart"),
+                        "index": data.get("index")}
+                INPUT["items"] = (INPUT["items"] + [item])[-50:]
+            return self.send(200, {"ok": True})
+        if what == "board" and sub == "reset":
+            return self.send(200, {"ok": board_reset()})
+        return self.send(404, {"error": "not found"})
+
+    def do_PUT(self):
+        parts, _ = self.parts()
+        data = self.body()
+        what = parts[1] if len(parts) > 1 else ""
+        if what == "players" and len(parts) > 2:
+            name = " ".join(str(data.get("name", "")).split())[:24]
+            if not name:
+                return self.send(400, {"error": "name required"})
+            with LOCK:
+                players = read_json(PLAYERS, [])
+                if any(p["name"].lower() == name.lower() and p["id"] != parts[2] for p in players):
+                    return self.send(409, {"error": "name already exists"})
+                for p in players:
+                    if p["id"] == parts[2]:
+                        p["name"] = name
+                write_json(PLAYERS, players)
+            return self.send(200, {"ok": True})
+        if what == "active":
+            with LOCK:
+                write_json(ACTIVE, data)
+            return self.send(200, {"ok": True})
+        return self.send(404, {"error": "not found"})
+
+    def do_DELETE(self):
+        parts, _ = self.parts()
+        what = parts[1] if len(parts) > 1 else ""
+        with LOCK:
+            if what == "players" and len(parts) > 2:
+                write_json(PLAYERS, [p for p in read_json(PLAYERS, []) if p["id"] != parts[2]])
+                return self.send(200, {"ok": True})
+            if what == "history" and len(parts) > 2:
+                write_history([r for r in read_history() if r.get("id") != parts[2]])
+                return self.send(200, {"ok": True})
+            if what == "active":
+                try:
+                    os.remove(ACTIVE)
+                except FileNotFoundError:
+                    pass
+                return self.send(200, {"ok": True})
+        return self.send(404, {"error": "not found"})
+
+
+def main():
+    os.makedirs(DATA, exist_ok=True)
+    srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    print(f"dartbox-playroom listening on :{PORT}, data in {DATA}", flush=True)
+    srv.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

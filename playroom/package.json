@@ -1,0 +1,6 @@
+{
+  "name": "dartbox-playroom",
+  "private": true,
+  "type": "module",
+  "description": "Marks the playroom JS as ES modules so the engine tests run in Node (npm test from the repo root)."
+}

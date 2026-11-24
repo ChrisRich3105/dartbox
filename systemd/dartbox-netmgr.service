@@ -1,0 +1,12 @@
+[Unit]
+Description=Dartbox network manager (WiFi client / setup hotspot fallback)
+After=NetworkManager.service
+Requires=NetworkManager.service
+
+[Service]
+ExecStart=/usr/local/bin/dartbox-netmgr
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

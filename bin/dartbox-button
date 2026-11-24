@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""dartbox-button: power button multi-press handler (reset procedure for headless use).
+
+    1 press  -> clean shutdown
+    3 presses (within ~2.5 s) -> setup hotspot mode
+    5 presses -> forget all WiFi networks + setup hotspot mode
+
+systemd-logind is configured with HandlePowerKey=ignore so it does not shut
+down on the first press. Holding the button ~4 s still hard-powers-off the box
+(handled by the firmware, not by us).
+"""
+import os
+import select
+import struct
+import subprocess
+import sys
+import time
+
+sys.path.insert(0, "/usr/local/lib/dartbox")
+from dartbox_common import load_config, log, submit_request  # noqa: E402
+
+KEY_POWER = 116
+EV_KEY = 1
+EVENT_FMT = "llHHi"                       # struct input_event on 64-bit
+EVENT_SIZE = struct.calcsize(EVENT_FMT)
+WINDOW = 2.5                              # seconds after last press before acting
+
+
+def power_button_devices():
+    """Find /dev/input/eventX of all devices that report KEY_POWER."""
+    # Usually two ACPI devices ("Power Button" PNP0C0C and LNXPWRBN) both fire
+    # for one physical press; the debounce in main() merges them.
+    devs = []
+    with open("/proc/bus/input/devices") as f:
+        blocks = f.read().split("\n\n")
+    for b in blocks:
+        name = handlers = ""
+        for line in b.splitlines():
+            if line.startswith("N: Name="):
+                name = line.split("=", 1)[1].strip('"')
+            elif line.startswith("H: Handlers="):
+                handlers = line.split("=", 1)[1]
+        if "Power Button" in name:
+            devs += ["/dev/input/" + h for h in handlers.split() if h.startswith("event")]
+    return devs
+
+
+def act(count):
+    log(f"power button pressed {count}x")
+    if count == 1:
+        subprocess.run(["systemctl", "poweroff"])
+    elif count in (3, 4):
+        submit_request({"action": "hotspot"})
+    elif count >= 5:
+        submit_request({"action": "forget_all"})
+
+
+def main():
+    if load_config().get("POWER_BUTTON_ENABLED", "1") != "1":
+        log("power button handling disabled")
+        while True:
+            time.sleep(3600)
+    devs = []
+    while not devs:
+        devs = power_button_devices()
+        if not devs:
+            log("no power button input device found, retrying in 30s")
+            time.sleep(30)
+    log("listening on", ", ".join(devs))
+    fds = [os.open(d, os.O_RDONLY | os.O_NONBLOCK) for d in devs]
+    presses, last = 0, 0.0
+    while True:
+        timeout = max(0.0, WINDOW - (time.monotonic() - last)) if presses else None
+        r, _, _ = select.select(fds, [], [], timeout)
+        if not r:
+            act(presses)
+            presses = 0
+            continue
+        for fd in r:
+            try:
+                data = os.read(fd, EVENT_SIZE * 64)
+            except BlockingIOError:
+                continue
+            for i in range(0, len(data) - EVENT_SIZE + 1, EVENT_SIZE):
+                _, _, typ, code, value = struct.unpack(EVENT_FMT, data[i:i + EVENT_SIZE])
+                if typ == EV_KEY and code == KEY_POWER and value == 1:
+                    now = time.monotonic()
+                    if now - last > 0.15:          # debounce (some ACPI buttons double-fire)
+                        presses += 1
+                        last = now
+
+
+if __name__ == "__main__":
+    main()

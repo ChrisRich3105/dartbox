@@ -1,0 +1,8 @@
+[Unit]
+Description=Dartbox: check GitHub for a new release
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/dartbox-update check

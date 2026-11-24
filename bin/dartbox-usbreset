@@ -1,0 +1,37 @@
+#!/bin/bash
+# dartbox-usbreset <devname>  (started by udev via dartbox-usbreset@.service)
+# If a USB stick contains a file named "dartbox-reset" (any content) in its root:
+#     -> forget all WiFi networks and start the setup hotspot.
+# If it contains "dartbox-hotspot":
+#     -> start the setup hotspot only (saved networks are kept).
+# If it contains "dartbox-wifi.txt" with lines  SSID=...  PASSWORD=...
+#     -> connect to that network directly (no phone needed).
+set -u
+DEV="/dev/$1"
+MNT=$(mktemp -d /run/dartbox-usb.XXXX)
+trap 'umount "$MNT" 2>/dev/null; rmdir "$MNT"' EXIT
+
+mount -o ro,noexec,nosuid,nodev "$DEV" "$MNT" 2>/dev/null || exit 0
+
+req() {
+    python3 -c 'import sys,json; sys.path.insert(0,"/usr/local/lib/dartbox")
+from dartbox_common import submit_request; submit_request(json.loads(sys.argv[1]))' "$1"
+}
+
+if [ -e "$MNT/dartbox-reset" ]; then
+    logger -t dartbox "USB reset stick found on $DEV: forgetting WiFi networks"
+    req '{"action":"forget_all"}'
+elif [ -e "$MNT/dartbox-hotspot" ]; then
+    logger -t dartbox "USB hotspot stick found on $DEV"
+    req '{"action":"hotspot"}'
+elif [ -f "$MNT/dartbox-wifi.txt" ]; then
+    SSID=$(sed -n 's/^SSID=//p' "$MNT/dartbox-wifi.txt" | head -n1 | tr -d '\r')
+    PASS=$(sed -n 's/^PASSWORD=//p' "$MNT/dartbox-wifi.txt" | head -n1 | tr -d '\r')
+    if [ -n "$SSID" ]; then
+        logger -t dartbox "USB WiFi config found on $DEV for SSID '$SSID'"
+        python3 -c 'import sys; sys.path.insert(0,"/usr/local/lib/dartbox")
+from dartbox_common import submit_request
+submit_request({"action":"connect","ssid":sys.argv[1],"password":sys.argv[2]})' "$SSID" "$PASS"
+    fi
+fi
+exit 0

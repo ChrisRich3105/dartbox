@@ -1,0 +1,19 @@
+# Changelog
+
+All notable changes. The section of a version is used as its GitHub release notes
+(and is what the box shows before you update), so write it for players, not developers.
+
+Format: `## vX.Y.Z – YYYY-MM-DD`, newest first.
+
+## v1.0.0 – 2026-11-24
+
+First public release.
+
+- **Headless or with a screen** – the same box works with and without a monitor; with a monitor it shows a fullscreen browser (kiosk).
+- **WiFi setup hotspot** – no known WiFi? The box opens the `Dartbox-xxxx` hotspot with a setup page that opens by itself on your phone.
+- **Reset without a keyboard** – press the power button 3× (setup mode) or 5× (forget all WiFi), or use a USB stick.
+- **Hub** at `http://dartbox.local/` – Autodarts, board manager and local playroom in one place; switch what the screen shows from your phone.
+- **Local playroom** – X01, Cricket, Around the Clock, Shanghai, Killer, Halve-It, Count Up, Baseball, Gotcha and six training modes, without the Autodarts cloud. Darts come in automatically from the Autodarts board, or via touch keypad / phone.
+- **Statistics** per player – averages, checkout %, doubles heat map, training trends.
+- **Online updates** – new releases show up in the hub with their release notes; update with one click, automatic rollback if the self-test fails.
+- **One installer** – also installs the Autodarts board client.

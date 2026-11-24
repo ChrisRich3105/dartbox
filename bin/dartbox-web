@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""dartbox-web: dartbox hub + WiFi setup + captive portal (port 80).
+
+  /            hub: status, links to Autodarts / board manager / playroom, WiFi setup,
+               remote control of what the kiosk screen shows
+  /start       kiosk landing page: forwards to the KIOSK_START view once online
+  /api/kiosk   GET: current screen command {seq, url} (polled by the kiosk extension)
+               POST {"view": "hub|autodarts|board|playroom|reload"}: change the screen
+  /api/update  GET: installed/latest version, release notes, update progress
+               POST /api/update/check | /api/update/apply {"tag"} | /api/update/rollback
+  /api/...     JSON API used by the page
+
+Unknown Host headers (phones probing for captive portals while connected to
+the setup hotspot) are redirected to the setup page so the "sign in to
+network" popup opens automatically.
+"""
+import json
+import os
+import re
+import socket
+import subprocess
+import sys
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+sys.path.insert(0, "/usr/local/lib/dartbox")
+from dartbox_common import (  # noqa: E402
+    LAST_ERROR, SCAN_CACHE, STATUS_FILE, load_config, read_json, release_info,
+    scan_networks, submit_request, view_urls,
+)
+
+# Latest "show this on the screen" command. seq starts time-based so a web
+# server restart never looks like an old command to the kiosk extension.
+KIOSK_CMD = {"seq": int(time.time() * 1000), "url": None}   # ms: stays exact in JS numbers
+KIOSK_LOCK = threading.Lock()
+
+SHARE = os.environ.get("DARTBOX_SHARE", "/usr/local/share/dartbox")
+PORT = int(os.environ.get("DARTBOX_WEB_PORT", "80"))
+IP_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+TAG_RE = re.compile(r"^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$")
+UPD = os.path.join(os.environ.get("DARTBOX_VAR", "/var/lib/dartbox"), "update")
+CURRENT = os.path.join(os.environ.get("DARTBOX_OPT", "/opt/dartbox"), "current")
+
+
+def update_info():
+    """Everything the System tab needs (files written by dartbox-update)."""
+    rel = release_info()
+    try:
+        with open(os.path.join(UPD, "previous")) as f:
+            prev = f.read().strip() or None
+    except OSError:
+        prev = None
+    try:
+        with open(os.path.join(UPD, "update.log"), errors="replace") as f:
+            log_tail = f.readlines()[-40:]
+    except OSError:
+        log_tail = []
+    latest = read_json(os.path.join(UPD, "latest.json"), None) or {}
+    installed = os.path.basename(os.path.realpath(CURRENT)) if os.path.islink(CURRENT) else rel["version"]
+    if latest.get("installed") and latest["installed"] != installed:
+        latest["update_available"] = False      # stale until the next check
+    return {
+        "installed": installed, "previous": prev, "repo": rel["repo"], "channel": rel["channel"],
+        "support_url": rel["support_url"], "latest": latest,
+        "status": read_json(os.path.join(UPD, "status.json"), None) or {"state": "idle"},
+        "log": "".join(log_tail),
+    }
+
+
+def run_detached(args):
+    """Run dartbox-update outside this service: installing restarts dartbox-web itself."""
+    unit = f"dartbox-update-run-{int(time.time())}"
+    try:
+        return subprocess.run(["systemd-run", "--unit", unit, "--collect", "--quiet",
+                               "/usr/local/bin/dartbox-update", *args], capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return subprocess.CompletedProcess(args, 1, "", f"could not start the updater: {e}")
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "dartbox"
+
+    def log_message(self, fmt, *args):  # quieter journal
+        pass
+
+    # ---------------------------------------------------------------- helpers
+    def own_host(self):
+        host = (self.headers.get("Host") or "").split(":")[0].lower()
+        hn = socket.gethostname().lower()
+        cfg = self.server.cfg
+        return (host in ("", "localhost", "127.0.0.1", hn, hn + ".local", cfg["HOTSPOT_ADDRESS"])
+                or IP_RE.match(host) is not None)
+
+    def send(self, code, body, ctype="application/json"):
+        if isinstance(body, (dict, list)):
+            body = json.dumps(body)
+        data = body.encode() if isinstance(body, str) else body
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def redirect(self, url):
+        self.send_response(302)
+        self.send_header("Location", url)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def body_json(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        if n > 10000:
+            return {}
+        try:
+            return json.loads(self.rfile.read(n) or b"{}")
+        except ValueError:
+            return {}
+
+    def status(self):
+        st = read_json(STATUS_FILE, {}) or {}
+        cfg = load_config()
+        try:
+            with open(LAST_ERROR) as f:
+                st["last_error"] = f.read()
+        except OSError:
+            st["last_error"] = None
+        st["views"] = view_urls(cfg)
+        st["kiosk_start"] = cfg["KIOSK_START"]
+        st["hostname"] = socket.gethostname()
+        rel = release_info()
+        latest = read_json(os.path.join(UPD, "latest.json"), None) or {}
+        st["version"] = rel["version"]
+        st["support_url"] = rel["support_url"]
+        st["update_available"] = bool(latest.get("update_available")) and latest.get("installed") == rel["version"]
+        st["update_tag"] = latest.get("tag")
+        # Only reveal the hotspot password to the local kiosk screen
+        if self.client_address[0] != "127.0.0.1":
+            st.pop("hotspot_password", None)
+        return st
+
+    # ---------------------------------------------------------------- routes
+    def do_GET(self):
+        if not self.own_host():
+            return self.redirect(f"http://{self.server.cfg['HOTSPOT_ADDRESS']}/")
+        path = self.path.split("?")[0]
+        if path in ("/", "/start", "/index.html"):
+            with open(os.path.join(SHARE, "index.html"), "rb") as f:
+                return self.send(200, f.read(), "text/html; charset=utf-8")
+        if path == "/api/status":
+            return self.send(200, self.status())
+        if path == "/api/update":
+            return self.send(200, update_info())
+        if path == "/api/kiosk":
+            with KIOSK_LOCK:
+                return self.send(200, dict(KIOSK_CMD))
+        if path == "/api/networks":
+            st = read_json(STATUS_FILE, {}) or {}
+            if st.get("mode") == "hotspot":
+                nets = (read_json(SCAN_CACHE, {}) or {}).get("networks", [])
+            else:
+                nets = scan_networks(rescan=False)
+            return self.send(200, {"networks": nets})
+        # Captive-portal probes (generate_204, hotspot-detect.html, ...) and the rest
+        return self.redirect("/")
+
+    def do_POST(self):
+        path = self.path.split("?")[0]
+        data = self.body_json()
+        if path == "/api/connect":
+            ssid = str(data.get("ssid", "")).strip()
+            if not ssid or len(ssid) > 32:
+                return self.send(400, {"error": "invalid SSID"})
+            pw = str(data.get("password", ""))
+            if pw and not 8 <= len(pw) <= 63:
+                return self.send(400, {"error": "WiFi password must be 8-63 characters"})
+            submit_request({"action": "connect", "ssid": ssid, "password": pw,
+                            "security": str(data.get("security", "")),
+                            "hidden": bool(data.get("hidden"))})
+            return self.send(200, {"ok": True})
+        if path == "/api/kiosk":
+            view = str(data.get("view", ""))
+            url = "reload" if view == "reload" else view_urls(load_config()).get(view)
+            if not url:
+                return self.send(400, {"error": f"view '{view}' is not configured"})
+            with KIOSK_LOCK:
+                KIOSK_CMD["seq"] += 1
+                KIOSK_CMD["url"] = url
+            return self.send(200, {"ok": True})
+        if path == "/api/update/check":
+            subprocess.run(["/usr/local/bin/dartbox-update", "check", "--force"],
+                           capture_output=True, timeout=40)
+            return self.send(200, update_info())
+        if path == "/api/update/apply":
+            tag = str(data.get("tag", ""))
+            if not TAG_RE.match(tag):
+                return self.send(400, {"error": "invalid version"})
+            if (update_info()["status"] or {}).get("state") in ("downloading", "installing", "testing", "rollingback"):
+                return self.send(409, {"error": "an update is already running"})
+            r = run_detached(["apply", tag])
+            return self.send(200 if r.returncode == 0 else 500, {"ok": r.returncode == 0, "error": r.stderr.strip()})
+        if path == "/api/update/rollback":
+            r = run_detached(["rollback"])
+            return self.send(200 if r.returncode == 0 else 500, {"ok": r.returncode == 0, "error": r.stderr.strip()})
+        if path == "/api/rescan":
+            submit_request({"action": "rescan"})
+            return self.send(200, {"ok": True})
+        if path == "/api/hotspot":
+            submit_request({"action": "hotspot"})
+            return self.send(200, {"ok": True})
+        if path == "/api/forget":
+            submit_request({"action": "forget_all"})
+            return self.send(200, {"ok": True})
+        return self.send(404, {"error": "not found"})
+
+
+def main():
+    srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    srv.cfg = load_config()
+    print(f"dartbox-web listening on :{PORT}", flush=True)
+    srv.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,11 @@
+[Unit]
+Description=Dartbox: look for updates a few minutes after boot and every 6 hours
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=6h
+RandomizedDelaySec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

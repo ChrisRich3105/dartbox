@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dartbox</title>
+<style>
+  :root { --bg:#14161a; --card:#1e2127; --fg:#e8eaed; --mut:#9aa0a6; --acc:#3ea6ff; --ok:#34c759; --warn:#ff9f0a; --err:#ff453a; --line:#2c3038; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; font:16px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--fg); display:flex; flex-direction:column; }
+  header { display:flex; align-items:center; gap:12px; padding:10px 16px; background:#1a1d22; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:19px; margin:0 8px 0 0; white-space:nowrap; }
+  nav { display:flex; gap:4px; flex-wrap:wrap; }
+  nav a { padding:7px 14px; border-radius:8px; color:var(--mut); text-decoration:none; font-weight:600; font-size:15px; }
+  nav a.active { background:#2a2f37; color:var(--fg); }
+  header .pill { margin-left:auto; }
+  main { flex:1; width:100%; max-width:760px; margin:0 auto; padding:16px; }
+  main.wide { max-width:none; padding:0; display:flex; flex-direction:column; }
+  .card { background:var(--card); border-radius:12px; padding:16px; margin-bottom:14px; }
+  .card h2 { font-size:16px; margin:0 0 10px; }
+  .row { display:flex; justify-content:space-between; gap:8px; padding:4px 0; }
+  .mut { color:var(--mut); }
+  .pill { display:inline-block; padding:2px 10px; border-radius:99px; font-size:13px; font-weight:600; }
+  .online { background:#0f3d1c; color:var(--ok); } .hotspot { background:#3d2a05; color:var(--warn); }
+  .offline,.connecting,.starting { background:#2a2d33; color:var(--mut); }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
+  .tile { display:block; padding:16px; border-radius:10px; background:#262a31; color:var(--fg); text-decoration:none; border:1px solid transparent; }
+  .tile:hover { border-color:var(--acc); }
+  .tile b { display:block; font-size:17px; margin:4px 0 2px; }
+  .tile .ico { font-size:26px; }
+  .tile.disabled { opacity:.45; pointer-events:none; }
+  ul { list-style:none; margin:0; padding:0; }
+  li.net { display:flex; justify-content:space-between; align-items:center; padding:12px 4px; border-top:1px solid var(--line); cursor:pointer; }
+  li.net:first-child { border-top:none; }
+  li.net:hover { background:#252931; }
+  input { width:100%; padding:12px; margin:6px 0 10px; border-radius:8px; border:1px solid #3a3f48; background:#121418; color:var(--fg); font-size:16px; }
+  button { padding:11px 16px; border:0; border-radius:8px; background:var(--acc); color:#000; font-weight:600; font-size:15px; cursor:pointer; }
+  button:disabled { opacity:.4; cursor:default; }
+  button.sec { background:#2f343c; color:var(--fg); } button.danger { background:#4a1d1b; color:#ffb4ab; }
+  .btns { display:flex; flex-wrap:wrap; gap:8px; }
+  .err { color:var(--err); } .hidden { display:none !important; }
+  a { color:var(--acc); }
+  [hidden] { display:none !important; }   /* flex rows must still hide */
+  .notes pre { background:#0e1013; border-radius:6px; padding:8px; overflow:auto; white-space:pre-wrap; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--warn); vertical-align:middle; }
+  .banner { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:#10273a; border:1px solid #1f6fb3; }
+  .banner .grow { flex:1; min-width:180px; }
+  .notes { max-height:340px; overflow:auto; background:#15181d; border-radius:8px; padding:4px 14px; font-size:14px; }
+  .notes h3 { font-size:15px; margin:14px 0 6px; } .notes h4 { font-size:14px; margin:10px 0 4px; }
+  .notes ul { padding-left:20px; margin:6px 0; } .notes li { margin:3px 0; }
+  .notes code, .log { font-family:ui-monospace, Consolas, monospace; font-size:12px; }
+  .log { white-space:pre-wrap; max-height:220px; overflow:auto; background:#0e1013; border-radius:8px; padding:8px; color:var(--mut); }
+  .state { font-weight:700; } .state.done { color:var(--ok); } .state.failed, .state.rolledback { color:var(--err); } .state.busy { color:var(--warn); }
+  footer { text-align:center; color:var(--mut); font-size:13px; padding:10px 16px 18px; }
+  footer a { color:var(--mut); }
+  a.coffee { display:inline-block; padding:8px 14px; border-radius:8px; background:#ffdd00; color:#000; font-weight:700; text-decoration:none; }
+  .framebar { display:flex; gap:12px; align-items:center; padding:8px 16px; font-size:14px; border-bottom:1px solid var(--line); }
+  iframe { flex:1; width:100%; border:0; background:var(--bg); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎯 Dartbox</h1>
+  <nav>
+    <a href="#home" data-tab="home">Home</a>
+    <a href="#board" data-tab="board">Board</a>
+    <a href="#wifi" data-tab="wifi">WiFi</a>
+    <a href="#system" data-tab="system">System <span id="updDot" class="dot" hidden></span></a>
+  </nav>
+  <span id="mode" class="pill offline">…</span>
+</header>
+
+<!-- ============================ HOME ============================ -->
+<main id="tab-home">
+  <div class="card banner" id="updbanner" hidden>
+    <div class="grow">⬆️ <b>Update available: <span id="updtag"></span></b><br><span class="mut">See what's new and install it in the System tab.</span></div>
+    <a href="#system"><button>Show</button></a>
+  </div>
+
+  <div class="card" id="redirect" hidden>
+    Online – opening <b id="target"></b> in <span id="count">5</span>s…
+    <div class="btns" style="margin-top:10px"><button class="sec" onclick="stay()">Stay on the hub</button></div>
+  </div>
+
+  <div class="card">
+    <h2>Open</h2>
+    <div class="tiles">
+      <a class="tile" id="t-autodarts" data-view="autodarts"><span class="ico">🌐</span><b>Autodarts</b><span class="mut">play.autodarts.io</span></a>
+      <a class="tile" id="t-board" data-view="board"><span class="ico">📷</span><b>Board manager</b><span class="mut">cameras, calibration</span></a>
+      <a class="tile" id="t-playroom" data-view="playroom"><span class="ico">🏠</span><b>Local playroom</b><span class="mut" id="t-playroom-sub">coming soon</span></a>
+    </div>
+    <p class="mut kiosk-only" style="margin:12px 0 0">Tap the 🎯 button in the bottom-left corner of any page to come back here.</p>
+  </div>
+
+  <div class="card remote-only">
+    <h2>Show on the dartbox screen</h2>
+    <p class="mut" style="margin-top:0">Remote control for the monitor attached to the box.</p>
+    <div class="btns">
+      <button class="sec" onclick="screen('autodarts')">Autodarts</button>
+      <button class="sec" onclick="screen('board')">Board manager</button>
+      <button class="sec" id="s-playroom" onclick="screen('playroom')">Playroom</button>
+      <button class="sec" onclick="screen('hub')">Hub</button>
+      <button class="sec" onclick="screen('reload')">↻ Reload</button>
+    </div>
+    <div id="screenmsg" class="mut" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Status</h2>
+    <div class="row"><span class="mut">Network</span><span id="conn">–</span></div>
+    <div class="row"><span class="mut">IP address</span><span id="ip">–</span></div>
+    <div class="row"><span class="mut">Address</span><span id="addr">–</span></div>
+  </div>
+</main>
+
+<!-- ============================ SYSTEM ============================ -->
+<main id="tab-system" class="hidden">
+  <div class="card">
+    <h2>Software</h2>
+    <div class="row"><span class="mut">Installed version</span><b id="v-inst">–</b></div>
+    <div class="row"><span class="mut">Newest version</span><span id="v-latest">–</span></div>
+    <div class="row"><span class="mut">Last checked</span><span id="v-checked">–</span></div>
+    <div class="row" id="v-prev-row"><span class="mut">Previous version (rollback)</span><span id="v-prev">–</span></div>
+    <div id="v-error" class="err"></div>
+    <div class="btns" style="margin-top:10px">
+      <button class="sec" id="btn-check" onclick="checkUpdates()">Check for updates</button>
+      <button id="btn-update" onclick="applyUpdate()" hidden>Update</button>
+      <button class="sec" id="btn-rollback" onclick="rollback()" hidden>Roll back</button>
+    </div>
+  </div>
+
+  <div class="card" id="progress" hidden>
+    <h2>Update</h2>
+    <div class="state" id="u-state"></div>
+    <p id="u-msg" style="margin:6px 0 10px"></p>
+    <details><summary class="mut">Details (log)</summary><div class="log" id="u-log"></div></details>
+  </div>
+
+  <div class="card" id="notescard" hidden>
+    <h2>What's new</h2>
+    <div class="notes" id="notes"></div>
+  </div>
+
+  <div class="card">
+    <h2>How updates work</h2>
+    <p class="mut" style="margin:0">The box checks for new releases every few hours. Updating keeps your settings, players and statistics.
+      Before installing, a backup is made; after installing, a self-test runs. If anything fails, the box goes back to the
+      previous version automatically. You can also roll back by hand at any time.</p>
+  </div>
+
+  <div class="card" id="supportcard" hidden>
+    <h2>Support the project</h2>
+    <p class="mut">Dartbox is free and open source. If you enjoy it, you can buy the developer a coffee ☕</p>
+    <a class="coffee" id="coffee2" target="_blank" rel="noopener">☕ Buy me a coffee</a>
+  </div>
+</main>
+
+<!-- ============================ BOARD ============================ -->
+<main id="tab-board" class="wide hidden">
+  <div class="framebar">
+    <span class="mut">Autodarts board manager</span>
+    <a id="bm-open" href="#" target="_blank">open full page ↗</a>
+    <span class="mut">– if this stays blank, the board manager is not running or refuses to be embedded.</span>
+  </div>
+  <iframe id="bm-frame" title="Board manager"></iframe>
+</main>
+
+<!-- ============================ WIFI ============================ -->
+<main id="tab-wifi" class="hidden">
+  <div class="card">
+    <div class="row"><span>Status</span><span id="mode2" class="pill offline">…</span></div>
+    <div class="row"><span class="mut">Network</span><span id="conn2">–</span></div>
+    <div class="row" id="hsrow"><span class="mut">Setup hotspot</span><span id="hs">–</span></div>
+    <div id="error" class="err"></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><h2 style="margin:0">Connect to WiFi</h2><a href="#wifi" onclick="rescan();return false">rescan</a></div>
+    <ul id="nets"><li class="mut">Loading…</li></ul>
+    <form id="form" class="hidden" onsubmit="connect();return false">
+      <label>Network name (SSID)<input id="ssid" autocomplete="off" required maxlength="32"></label>
+      <label>Password <span class="mut">(empty for open networks)</span><input id="pw" type="password" autocomplete="off" maxlength="63"></label>
+      <label class="mut"><input id="hidden" type="checkbox" style="width:auto"> hidden network</label>
+      <div class="btns"><button type="submit">Connect</button><button type="button" class="sec" onclick="hideForm()">Cancel</button></div>
+    </form>
+    <p><a href="#wifi" onclick="showForm('', '');return false">Enter network manually…</a></p>
+  </div>
+
+  <div class="card" id="msg" hidden></div>
+
+  <div class="card">
+    <h2>Maintenance</h2>
+    <p class="mut">Setup mode starts the hotspot until a network is configured or the box is rebooted.</p>
+    <div class="btns">
+      <button class="sec" onclick="post('/api/hotspot','Switching to setup mode…')">Setup mode</button>
+      <button class="danger" onclick="if(confirm('Delete all saved WiFi networks?')) post('/api/forget','All WiFi networks deleted, hotspot starting…')">Forget all WiFi</button>
+    </div>
+  </div>
+</main>
+
+<footer id="footer"><span id="f-version"></span><span id="f-support"></span></footer>
+
+<script>
+// The kiosk browser on the box itself talks to us as "localhost"; phones/PCs use dartbox.local or an IP.
+const isKiosk = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+const isStart = location.pathname === '/start';
+let S = {}, security = '', stayed = false, redirectTimer = null, firstStatus = true;
+
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function bars(sig){ return sig > 75 ? '▂▄▆█' : sig > 50 ? '▂▄▆_' : sig > 25 ? '▂▄__' : '▂___'; }
+// Config URLs point at "localhost" (correct for the kiosk); rewrite for remote visitors.
+function forMe(url){ return url && !isKiosk ? url.replace('//localhost', '//' + location.hostname) : url; }
+
+document.querySelectorAll('.kiosk-only').forEach(e => e.classList.toggle('hidden', !isKiosk));
+document.querySelectorAll('.remote-only').forEach(e => e.classList.toggle('hidden', isKiosk));
+
+// ---------------------------------------------------------------- tabs
+function showTab(){
+  const tab = (location.hash || '#home').slice(1);
+  ['home','board','wifi','system'].forEach(t => $('tab-' + t).classList.toggle('hidden', t !== tab));
+  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
+  if (tab === 'board' && S.views && !$('bm-frame').src) $('bm-frame').src = forMe(S.views.board);
+  if (tab === 'wifi') networks();
+  if (tab === 'system') loadUpdate();
+}
+window.addEventListener('hashchange', showTab);
+
+// ---------------------------------------------------------------- status
+const MODES = {online:'online', hotspot:'setup hotspot', connecting:'connecting…', offline:'offline', starting:'starting'};
+async function status(){
+  try { S = await (await fetch('/api/status')).json(); } catch(e) { return; }
+  const m = S.mode || 'starting';
+  for (const id of ['mode','mode2']) { $(id).textContent = MODES[m] || m; $(id).className = 'pill ' + m; }
+  $('conn').textContent = $('conn2').textContent = S.connection || '–';
+  $('ip').textContent = S.ip || '–';
+  $('addr').textContent = S.hostname ? `http://${S.hostname}.local/` : '–';
+  $('hs').textContent = S.hotspot_ssid ? S.hotspot_ssid + (S.hotspot_password ? '  /  ' + S.hotspot_password : '') : '–';
+  $('hsrow').hidden = m !== 'hotspot';
+  $('error').textContent = S.last_error || '';
+  $('updbanner').hidden = !S.update_available;
+  $('updDot').hidden = !S.update_available;
+  $('updtag').textContent = S.update_tag || '';
+  $('f-version').textContent = S.version ? 'Dartbox ' + S.version : '';
+  $('f-support').innerHTML = S.support_url ? ` · <a href="${esc(S.support_url)}" target="_blank" rel="noopener">☕ Buy me a coffee</a>` : '';
+  if (S.support_url) { $('coffee2').href = S.support_url; $('supportcard').hidden = false; }
+
+  // tiles: kiosk navigates in place (🎯 button brings you back), others open a new tab
+  for (const v of ['autodarts','board','playroom']) {
+    const t = $('t-' + v), url = forMe(S.views[v]);
+    t.classList.toggle('disabled', !url);
+    if (url) { t.href = url; t.target = isKiosk ? '_self' : '_blank'; }
+  }
+  if (S.views.playroom) $('t-playroom-sub').textContent = 'offline games & training';
+  $('s-playroom').disabled = !S.views.playroom;
+  $('bm-open').href = forMe(S.views.board);
+
+  if (firstStatus) {
+    firstStatus = false;
+    if (m === 'hotspot' && !location.hash) location.hash = '#wifi';
+    showTab();
+  }
+  const startUrl = S.views[S.kiosk_start];
+  if (isStart && m === 'online' && !stayed && !redirectTimer && startUrl && S.kiosk_start !== 'hub') startRedirect(startUrl);
+}
+
+function startRedirect(url){
+  let n = 5;
+  $('target').textContent = url.replace(/^https?:\/\//, ''); $('redirect').hidden = false;
+  redirectTimer = setInterval(() => {
+    $('count').textContent = --n;
+    if (n <= 0) { clearInterval(redirectTimer); location.href = url; }
+  }, 1000);
+}
+function stay(){ stayed = true; clearInterval(redirectTimer); $('redirect').hidden = true; }
+
+// ---------------------------------------------------------------- remote screen control
+async function screen(view){
+  const r = await fetch('/api/kiosk', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({view})});
+  const j = await r.json();
+  $('screenmsg').textContent = r.ok ? 'Sent – the screen switches within a few seconds.' : j.error;
+}
+
+// ---------------------------------------------------------------- wifi
+async function networks(){
+  const r = await (await fetch('/api/networks')).json();
+  const ul = $('nets');
+  if (!r.networks.length) { ul.innerHTML = '<li class="mut">No networks found – try rescan.</li>'; return; }
+  ul.innerHTML = r.networks.map((n,i) =>
+    `<li class="net" data-i="${i}"><span>${esc(n.ssid)} ${n.security ? '🔒' : ''}</span><span class="mut">${bars(n.signal)}</span></li>`).join('');
+  ul.querySelectorAll('li.net').forEach(li => li.onclick = () => {
+    const n = r.networks[li.dataset.i]; showForm(n.ssid, n.security);
+  });
+}
+function showForm(ssid, sec){
+  security = sec; $('ssid').value = ssid; $('pw').value = ''; $('hidden').checked = false;
+  $('form').classList.remove('hidden'); (ssid ? $('pw') : $('ssid')).focus();
+}
+function hideForm(){ $('form').classList.add('hidden'); }
+async function connect(){
+  const body = {ssid: $('ssid').value, password: $('pw').value, security, hidden: $('hidden').checked};
+  const r = await fetch('/api/connect', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const j = await r.json();
+  if (!r.ok) { alert(j.error); return; }
+  hideForm();
+  showMsg(`Connecting to <b>${esc(body.ssid)}</b>…<br><br>` +
+    `If you set this up from your phone: the setup hotspot disappears now. ` +
+    `Reconnect your phone to your normal WiFi and open <b>http://${esc(S.hostname || 'dartbox')}.local/</b><br><br>` +
+    `If the password was wrong, the setup hotspot comes back within a minute.`);
+}
+async function rescan(){
+  showMsg('Scanning… (the setup hotspot may drop for a few seconds – reconnect if needed)');
+  await fetch('/api/rescan', {method:'POST'}); setTimeout(networks, 8000);
+}
+async function post(url, msg){ await fetch(url, {method:'POST'}); showMsg(msg); }
+function showMsg(html){ $('msg').innerHTML = html; $('msg').hidden = false; }
+
+// ---------------------------------------------------------------- updates
+const BUSY = ['downloading', 'installing', 'testing', 'rollingback'];
+let U = null, updTimer = null;
+
+/** tiny Markdown renderer for release notes (headings, lists, bold, italics, code, links) */
+function md(src){
+  const inline = t => esc(t)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/(^|[^*])\*([^*]+)\*/g, '$1<i>$2</i>')
+    .replace(/(^|\s)_([^_]+)_/g, '$1<i>$2</i>')
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  let html = '', inList = false, code = null;
+  for (const raw of String(src || '').split(/\r?\n/)) {
+    const line = raw.trimEnd();
+    if (/^\s*```/.test(line)) {                       // fenced code block
+      if (code === null) { if (inList) { html += '</ul>'; inList = false; } code = []; }
+      else { html += '<pre><code>' + esc(code.join('\n')) + '</code></pre>'; code = null; }
+      continue;
+    }
+    if (code !== null) { code.push(raw); continue; }
+    const li = line.match(/^\s*[-*+]\s+(.*)/);
+    if (li) { if (!inList) { html += '<ul>'; inList = true; } html += '<li>' + inline(li[1]) + '</li>'; continue; }
+    if (inList) { html += '</ul>'; inList = false; }
+    const h = line.match(/^(#{1,6})\s+(.*)/);
+    if (h) html += (h[1].length <= 2 ? '<h3>' : '<h4>') + inline(h[2]) + (h[1].length <= 2 ? '</h3>' : '</h4>');
+    else if (line.trim()) html += '<p>' + inline(line) + '</p>';
+  }
+  if (code !== null) html += '<pre><code>' + esc(code.join('\n')) + '</code></pre>';
+  return html + (inList ? '</ul>' : '');
+}
+
+const STATE_TEXT = { idle: '', downloading: 'Downloading…', installing: 'Installing…', testing: 'Testing…',
+  rollingback: 'Rolling back…', done: '✓ Done', failed: '✗ Failed', rolledback: '↩ Rolled back' };
+
+async function loadUpdate(){
+  clearTimeout(updTimer);
+  try { U = await (await fetch('/api/update')).json(); } catch(e) { updTimer = setTimeout(loadUpdate, 3000); return; }
+  const L = U.latest || {}, st = U.status || {state: 'idle'}, busy = BUSY.includes(st.state);
+  $('v-inst').textContent = U.installed || '–';
+  $('v-latest').textContent = L.tag ? (L.update_available ? L.tag + ' – update available' : L.tag + ' – you are up to date')
+    : (U.repo ? 'not checked yet' : 'no update source configured');
+  $('v-checked').textContent = L.checked ? new Date(L.checked * 1000).toLocaleString() : '–';
+  $('v-prev').textContent = U.previous || '–';
+  $('v-prev-row').hidden = !U.previous;
+  $('v-error').textContent = L.error || '';
+  $('btn-update').hidden = !L.update_available || busy;
+  $('btn-update').textContent = 'Update to ' + (L.tag || '');
+  $('btn-rollback').hidden = !U.previous || busy;
+  $('btn-rollback').textContent = 'Roll back to ' + (U.previous || '');
+  $('btn-check').disabled = busy;
+  $('notescard').hidden = !(L.update_available && L.notes);
+  $('notes').innerHTML = md(L.notes);
+  $('progress').hidden = !st.state || st.state === 'idle';
+  $('u-state').textContent = STATE_TEXT[st.state] || st.state;
+  $('u-state').className = 'state ' + (busy ? 'busy' : st.state);
+  $('u-msg').textContent = st.message || '';
+  $('u-log').textContent = U.log || '';
+  if (busy || location.hash === '#system') updTimer = setTimeout(loadUpdate, busy ? 1500 : 10000);
+}
+
+async function checkUpdates(){
+  $('btn-check').disabled = true; $('btn-check').textContent = 'Checking…';
+  try { await fetch('/api/update/check', {method: 'POST'}); } catch(e) {}
+  $('btn-check').textContent = 'Check for updates';
+  loadUpdate(); status();
+}
+
+async function applyUpdate(){
+  const tag = U && U.latest && U.latest.tag;
+  if (!tag || !confirm(`Install ${tag}?\n\nThe box makes a backup first and goes back automatically if the new version does not pass its self-test. A game in progress may be interrupted.`)) return;
+  const r = await fetch('/api/update/apply', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tag})});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) alert(j.error || 'Could not start the update');
+  setTimeout(loadUpdate, 800);
+}
+
+async function rollback(){
+  if (!U || !U.previous || !confirm(`Go back to version ${U.previous}?\n\nSettings, players and statistics are kept.`)) return;
+  const r = await fetch('/api/update/rollback', {method: 'POST'});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) alert(j.error || 'Could not start the rollback');
+  setTimeout(loadUpdate, 800);
+}
+
+status();
+setInterval(status, 3000);
+</script>
+</body>
+</html>
