@@ -3,6 +3,11 @@ import { GAMES } from './games.js';
 import { TRAININGS } from './training.js';
 import { label, score } from './darts.js';
 import { playerStats } from './stats.js';
+import { getSettings, setSetting, resetSettings, DESCRIPTIONS } from './settings.js';
+import { play, say, voices, unlockAudio } from './sound.js';
+import { celebrate, tween } from './fx.js';
+import { boardSVG } from './dartboard.js';
+import { lineChart, PLAYER_COLORS } from './charts.js';
 
 const ALL = [...GAMES, ...TRAININGS];
 const BY_ID = Object.fromEntries(ALL.map((G) => [G.id, G]));
@@ -80,16 +85,66 @@ function saveActive() {
 }
 setInterval(() => { if (game) saveActive(); }, 3000);   // heartbeat for remotes
 
-/** run a game action, then persist / render / save history */
-function act(fn) {
+/** run a game action, then persist / render / save history. silent: no sounds/effects (undo, corrections) */
+function act(fn, { silent = false } = {}) {
   if (!game) return false;
+  game.events = [];
   const r = fn();
   const s = game.s;
-  if (s.msg && s.msg.t > lastMsgT) { lastMsgT = s.msg.t; toast(s.msg.text, s.msg.kind); }
+  const shown = silent ? false : handleEvents(game.events);
+  game.events = [];
+  if (s.msg && s.msg.t > lastMsgT) { lastMsgT = s.msg.t; if (!shown) toast(s.msg.text, s.msg.kind); }
   if (s.matchOver && !s.saved) { s.saved = true; saveHistory(false); }
   saveActive();
   if (page === 'game') renderGame();
   return r;
+}
+
+// ------------------------------------------------------------------ events -> sounds, effects, caller
+const PRIORITY = ['match', 'leg', 'checkout', '180', 'shanghai', 'whitehorse', 'killer', 'gotcha', 'out',
+  'bust', 'halved', 'fail', 'marks', 'score', 'hit'];
+
+/** Returns true if a big on-screen effect was shown (then the plain toast is skipped). */
+function handleEvents(evts) {
+  if (!evts.length || !game) return false;
+  const G = game.constructor, nm = (i) => game.name(i), x01 = G.stype === 'x01';
+  for (const e of evts) if (e.type === 'dart') play('dart', e.d);
+  const top = PRIORITY.map((t) => evts.find((e) => e.type === t)).find(Boolean);
+  let shown = false;
+  if (top) {
+    switch (top.type) {
+      case 'match':
+        play('match');
+        shown = celebrate(G.training ? 'Session complete' : `${nm(top.i)} wins!`, 'win', { confetti: !G.training, sub: G.title, ms: 2800 });
+        say(x01 ? 'Game shot, and the match!' : G.training ? 'Well done' : `${nm(top.i)} wins the match`);
+        break;
+      case 'leg':
+        play('leg');
+        shown = celebrate(`${nm(top.i)} wins the leg`, 'win', { ms: 2200 });
+        say(x01 ? 'Game shot, and the leg!' : `Leg to ${nm(top.i)}`);
+        break;
+      case 'checkout': play('checkout'); shown = celebrate(`Checkout ${top.value}`, 'great'); say('Checkout!'); break;
+      case '180': play('oneEighty'); shown = celebrate('180', 'great', { confetti: true, sub: 'ONE HUNDRED AND EIGHTY' }); say('One hundred and eighty!'); break;
+      case 'shanghai': play('special'); shown = celebrate('Shanghai!', 'great', { confetti: true }); say('Shanghai!'); break;
+      case 'whitehorse': play('special'); shown = celebrate('White horse', 'great', { sub: '9 marks' }); break;
+      case 'killer': play('special'); shown = celebrate(`${nm(top.i)} is a killer`, 'great'); say(`${nm(top.i)} is a killer`); break;
+      case 'gotcha': play('special'); shown = celebrate('Gotcha!', 'great', { sub: `${nm(top.victim)} back to zero` }); break;
+      case 'out': play('out'); shown = celebrate(`${nm(top.i)} is out`, 'bad', { ms: 1500 }); break;
+      case 'bust': play('bust'); shown = celebrate('Bust', 'bad', { ms: 1300 }); say('No score'); break;
+      case 'halved': play('fail'); shown = celebrate('Halved!', 'bad', { ms: 1300 }); break;
+      case 'fail': play('fail'); break;
+      case 'marks': play('big'); shown = celebrate(`${top.marks} marks`, 'good', { ms: 1300 }); break;
+      case 'score':
+        if (top.points >= 100) { play('big'); shown = celebrate(String(top.points), 'good', { ms: 1300, sub: top.points >= 140 ? 'TON FORTY PLUS' : 'TON PLUS' }); }
+        say(top.points === 0 ? 'No score' : String(top.points));
+        break;
+      case 'hit': play('hit'); break;
+      default: break;
+    }
+  }
+  const turn = evts.filter((e) => e.type === 'turn').pop();
+  if (turn && turn.call) say(turn.call, { interrupt: false });
+  return shown;
 }
 
 async function saveHistory(partial) {
@@ -101,13 +156,14 @@ async function saveHistory(partial) {
     winner: s.winner !== null && s.winner !== undefined ? s.players[s.winner].id : null,
     ranking: (s.ranking || []).map((i) => s.players[i].id),
     stats: Object.fromEntries(s.players.map((p, i) => [p.id, game.summary(i)])),
+    hist: Object.fromEntries(s.players.map((p, i) => [p.id, (s.hist && s.hist[i]) || {}])),
   };
   const r = await api.send('POST', 'history', rec);
   lastHistoryId = r.id || null;
 }
 
 function inputDart(d) {
-  if (sel !== null) { const i = sel; sel = null; act(() => game.correct(i, d)); }
+  if (sel !== null) { const i = sel; sel = null; act(() => game.correct(i, d), { silent: true }); }
   else act(() => game.dart(d));
 }
 
@@ -170,8 +226,8 @@ async function pollRemote() {
     for (const it of r.items) {
       remoteIn.since = Math.max(remoteIn.since, it.seq);
       if (it.action === 'dart' && it.dart) act(() => game.dart(it.dart));
-      else if (it.action === 'correct' && it.dart) act(() => game.correct(it.index, it.dart));
-      else if (it.action === 'undo') act(() => game.undo());
+      else if (it.action === 'correct' && it.dart) act(() => game.correct(it.index, it.dart), { silent: true });
+      else if (it.action === 'undo') act(() => game.undo(), { silent: true });
       else if (it.action === 'next') act(() => game.next());
     }
   } catch { /* server restarting */ } finally {
@@ -188,7 +244,7 @@ function route() {
     a.dataset.nav === page || (a.dataset.nav === 'home' && ['home', 'setup', 'game', 'remote'].includes(page))));
   $app.className = page === 'game' || page === 'remote' ? 'full' : '';
   ({ home: renderHome, setup: () => renderSetup(parts[1]), game: renderGame, remote: renderRemote,
-     stats: () => renderStats(parts[1]), players: renderPlayers }[page] || renderHome)();
+     stats: () => renderStats(parts[1]), players: renderPlayers, settings: renderSettings }[page] || renderHome)();
 }
 window.addEventListener('hashchange', route);
 
@@ -387,10 +443,12 @@ async function renderGame() {
     $app.innerHTML = `<div id="gamepage">
       <div class="gamehead"><span class="title" id="gtitle"></span><span class="info" id="ginfo"></span>
         <button id="endgame" class="ghost">End</button></div>
-      <div id="sb"></div><div class="waiting" id="st"></div>${keypadHTML()}</div>`;
+      <div class="gamegrid" id="ggrid"><div class="gmain"><div id="sb"></div><div class="waiting" id="st"></div>${keypadHTML()}</div>
+      <div class="gboard" id="gboard"></div></div></div>`;
+    lastBoardHTML = '';
     bindKeypad((x) => {
       if (x.dart) inputDart(x.dart);
-      else if (x.undo) { sel = null; act(() => game.undo()); }
+      else if (x.undo) { sel = null; act(() => game.undo(), { silent: true }); }
       else if (x.next) { sel = null; act(() => game.next()); }
     });
     document.getElementById('endgame').onclick = endGame;
@@ -401,14 +459,44 @@ async function renderGame() {
   document.getElementById('ginfo').textContent = v.info;
   document.getElementById('st').textContent = sel !== null ? `Correcting dart ${sel + 1} – choose the right segment` : statusLine(s);
   if (html !== lastGameHTML) {
+    const before = [...document.querySelectorAll('#sb .pcol .big')].map((e) => e.textContent);
+    const visitBefore = document.querySelectorAll('#sb .slot:not(.empty)').length;
     lastGameHTML = html;
     document.getElementById('sb').innerHTML = html;
     document.querySelectorAll('#sb [data-slot]').forEach((el) => el.onclick = () => {
       const k = +el.dataset.slot;
       if (k < game.s.visit.length) { sel = sel === k ? null : k; renderGame(); }
     });
+    // animated score change + "pop" for a new dart
+    document.querySelectorAll('#sb .pcol .big').forEach((el, i) => {
+      const a = before[i], b = el.textContent;
+      if (a !== undefined && a !== b && /^\d+$/.test(a) && /^\d+$/.test(b)) tween(el, +a, +b);
+    });
+    if (getSettings().animations && s.visit.length > visitBefore && s.visit.length) {
+      const slot = document.querySelector(`#sb [data-slot="${s.visit.length - 1}"]`);
+      if (slot) slot.classList.add('pop');
+    }
   }
+  renderBoardPanel(s);
 }
+
+let lastBoardHTML = '';
+function renderBoardPanel(s) {
+  const st = getSettings(), grid = document.getElementById('ggrid'), panel = document.getElementById('gboard');
+  if (!grid || !panel) return;
+  const wide = innerWidth >= 1000;
+  const show = st.boardView && (wide || st.boardOnSmall);
+  grid.classList.toggle('withboard', show);
+  panel.hidden = !show;
+  if (!show) return;
+  const html = boardSVG({
+    hits: s.visit,
+    targets: st.showTargets && game.canThrow() ? game.targets() : [],
+    animate: st.animations,
+  });
+  if (html !== lastBoardHTML) { lastBoardHTML = html; panel.innerHTML = html; }
+}
+addEventListener('resize', () => { if (page === 'game' && game) renderBoardPanel(game.s); });
 
 async function endGame() {
   const G = game.constructor;
@@ -441,14 +529,35 @@ function renderResults() {
         <button id="home" class="ghost">Done</button>
       </div>
       <p class="mut">Results are saved to the statistics.</p>
-    </div>`;
+    </div>
+    ${resultsVisuals()}`;
   document.getElementById('rematch').onclick = () => {
     const players = s.players.length > 1 && !G.training ? [...s.players.slice(1), s.players[0]] : s.players;
     hostGame(new G({ ...game.cfg }, players));
     renderGame();
   };
-  document.getElementById('undoLast').onclick = () => act(() => game.undo());
+  document.getElementById('undoLast').onclick = () => act(() => game.undo(), { silent: true });
   document.getElementById('home').onclick = async () => { game = null; await api.send('DELETE', 'active'); location.hash = '#/'; };
+}
+
+const TRACE_LABEL = { x01: 'Points left (last leg)', cricket: 'Score (last leg)', atc: 'Targets done', killer: 'Lives',
+  doubles: 'Hit % (running)', target: 'Hit % (running)', checkout: 'Successful finishes', bobs27: 'Score' };
+
+function resultsVisuals() {
+  const s = game.s, G = game.constructor;
+  const series = s.players.map((p, i) => ({ name: p.name, values: (s.trace && s.trace[i]) || [], color: PLAYER_COLORS[i % PLAYER_COLORS.length] }));
+  const chart = lineChart(series, { label: TRACE_LABEL[G.stype] || 'Score' });
+  const heats = (s.hist || []).map((h, i) => ({ h, i })).filter(({ h }) => Object.keys(h).length).slice(0, 4);
+  const boards = heats.length ? `<div class="heatgrid">${heats.map(({ h, i }) => `<div class="heatcell">
+      ${boardSVG({ heat: h, small: true })}<div><b>${esc(s.players[i].name)}</b><br><span class="mut">${esc(topSegments(h))}</span></div></div>`).join('')}</div>` : '';
+  if (!chart && !boards) return '';
+  return `<div class="card" style="max-width:760px;margin:12px auto 0">${chart}${boards ? `<h3 style="margin-top:14px">Where the darts landed</h3>${boards}` : ''}</div>`;
+}
+
+function topSegments(h) {
+  const total = Object.values(h).reduce((a, b) => a + b, 0) || 1;
+  return Object.entries(h).sort((a, b) => b[1] - a[1]).slice(0, 4)
+    .map(([k, v]) => `${k.replace(/^S/, '')} ${Math.round((v / total) * 100)}%`).join(' · ');
 }
 
 function resultLine(i) {
@@ -578,8 +687,14 @@ async function renderStats(pid) {
   const hist = await api.get('history?player=' + encodeURIComponent(pid));
   const groups = playerStats(hist, pid);
   const name = (players.find((p) => p.id === pid) || {}).name || 'Player';
+  const heat = {};
+  for (const r of hist.slice(-100)) for (const [k, v] of Object.entries((r.hist && r.hist[pid]) || {})) heat[k] = (heat[k] || 0) + v;
+  const darts = Object.values(heat).reduce((a, b) => a + b, 0);
+  const heatCard = darts ? `<div class="card"><div class="row spread"><h3>Where your darts land</h3><span class="mut">${darts} darts, last ${Math.min(hist.length, 100)} sessions</span></div>
+    <div class="heatcell big">${boardSVG({ heat })}<div class="mut">${esc(topSegments(heat))}<br>Miss: ${Math.round(((heat.Miss || 0) / darts) * 100)}%</div></div></div>` : '';
   $app.innerHTML = `<h1>Statistics</h1><div class="pchips">${chips}</div>
     <h2>${esc(name)}</h2>
+    ${heatCard}
     ${groups.map((g) => `<div class="card">
       <div class="row spread"><h3>${esc(g.title)}</h3><span class="mut">${g.count} session${g.count === 1 ? '' : 's'}${g.multi ? ` · ${g.wins} won of ${g.multi}` : ''}</span></div>
       ${g.cards.length ? `<div class="kv">${g.cards.map(([k, v]) => `<div><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join('')}</div>` : ''}
@@ -596,11 +711,50 @@ async function renderStats(pid) {
   });
 }
 
+// ------------------------------------------------------------------ settings (per device)
+function renderSettings() {
+  const st = getSettings();
+  const vs = voices();
+  const row = ([key, labelText, desc, kind]) => {
+    if (kind === 'range') {
+      return `<div class="setrow"><div><b>${esc(labelText)}</b></div>
+        <input type="range" min="0" max="1" step="0.05" value="${st[key]}" data-range="${key}"></div>`;
+    }
+    if (kind === 'voice') {
+      return `<div class="setrow"><div><b>${esc(labelText)}</b><div class="mut">${vs.length ? 'English voices are preferred automatically.' : 'No voices found on this device – the caller stays silent.'}</div></div>
+        <select data-voice="1" ${vs.length ? '' : 'disabled'}><option value="">Automatic</option>${vs.map((v) => `<option ${v.name === st.voice ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select></div>`;
+    }
+    return `<label class="setrow"><div><b>${esc(labelText)}</b><div class="mut">${esc(desc)}</div></div>
+      <input type="checkbox" class="switch" data-key="${key}" ${st[key] ? 'checked' : ''}></label>`;
+  };
+  $app.innerHTML = `<h1>Settings</h1>
+    <p class="mut" style="margin-top:-8px">Saved on this device only – the box's screen and your phone can be set up differently.</p>
+    ${DESCRIPTIONS.map(([title, rows]) => `<div class="card"><h3>${esc(title)}</h3>${rows.map(row).join('')}</div>`).join('')}
+    <div class="row"><button id="t-sound">▶ Test sounds</button><button id="t-caller">▶ Test caller</button><button id="t-fx">▶ Test effects</button>
+      <button id="t-reset" class="ghost">Reset to defaults</button></div>`;
+  $app.querySelectorAll('[data-key]').forEach((el) => el.onchange = () => { setSetting(el.dataset.key, el.checked); unlockAudio(); });
+  $app.querySelectorAll('[data-range]').forEach((el) => el.oninput = () => setSetting(el.dataset.range, +el.value));
+  const vsel = $app.querySelector('[data-voice]');
+  if (vsel) vsel.onchange = () => setSetting('voice', vsel.value);
+  document.getElementById('t-sound').onclick = () => { unlockAudio(); play('dart', { n: 20, m: 3 }); setTimeout(() => play('hit'), 400); setTimeout(() => play('oneEighty'), 900); };
+  document.getElementById('t-caller').onclick = () => {
+    const was = getSettings().caller;
+    if (!was) setSetting('caller', true);
+    say('One hundred and eighty!');
+    if (!was) setSetting('caller', false);
+  };
+  document.getElementById('t-fx').onclick = () => { if (!celebrate('180', 'great', { confetti: true, sub: 'ONE HUNDRED AND EIGHTY' })) toast('Celebrations are switched off', 'info'); };
+  document.getElementById('t-reset').onclick = () => { resetSettings(); renderSettings(); };
+}
+if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = () => { if (page === 'settings') renderSettings(); };
+// browsers only allow sound after the first tap / key press
+['pointerdown', 'keydown'].forEach((ev) => addEventListener(ev, unlockAudio, { passive: true }));
+
 // ------------------------------------------------------------------ keyboard (kiosk with a keyboard)
 document.addEventListener('keydown', (e) => {
   if (page !== 'game' || !game || e.target.tagName === 'INPUT') return;
   if (e.key === 'Enter') { e.preventDefault(); sel = null; act(() => game.next()); }
-  else if (e.key === 'Backspace') { e.preventDefault(); sel = null; act(() => game.undo()); }
+  else if (e.key === 'Backspace') { e.preventDefault(); sel = null; act(() => game.undo(), { silent: true }); }
   else if (e.key === 'd' || e.key === 'D') { mod = mod === 2 ? 1 : 2; refreshKeypad(); }
   else if (e.key === 't' || e.key === 'T') { mod = mod === 3 ? 1 : 3; refreshKeypad(); }
   else if (e.key === 'm' || e.key === 'M') inputDart({ n: 0, m: 0 });

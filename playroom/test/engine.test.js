@@ -263,6 +263,42 @@ export function run() {
   g2.undo();
   eq('restored undo', g2.s.visit.length, 2);
 
+  // ---------------- events, hit map, score trace, board targets, caller
+  g = new X01({ start: 101 }, P('A', 'B'));
+  g.events = [];
+  throwAll(g, 'T20 T20');                          // bust
+  eq('events: darts + bust', g.events.map((e) => e.type), ['dart', 'dart', 'bust']);
+  eq('hit map counts', g.s.hist[0], { T20: 2 });
+  g.next();
+  eq('trace after a bust visit', g.s.trace[0], [101, 101]);
+  g = new X01({ start: 501 }, P('A'));
+  throwAll(g, 'T20 T20 T20');
+  g.events = []; g.next();
+  eq('180 event on visit end', g.events.some((e) => e.type === '180'), true);
+  g = new X01({ start: 101 }, P('A', 'B'));
+  g.events = [];
+  throwAll(g, 'T20 S1 D20');
+  eq('checkout + match events', g.events.filter((e) => e.type !== 'dart').map((e) => e.type), ['checkout', 'match']);
+  g = new X01({ start: 101 }, P('A'));
+  throwAll(g, 'T20 S1');                           // 40 left, 1 dart
+  eq('x01 board target = checkout route', g.targets(), [{ n: 20, m: 2 }]);
+  eq('caller line', new X01({ start: 100 }, P('Anna')).callTurn(0), 'Anna, you require 100');
+  eq('no caller line above 170', new X01({ start: 501 }, P('Anna')).callTurn(0), '');
+  eq('cricket targets = open numbers', new Cricket({ maxRounds: 0 }, P('A', 'B')).targets().length, 7);
+  eq('bobs27 target', new Bobs27({}, P('A')).targets(), [{ n: 1, m: 2 }]);
+  g = new HalveIt({ preset: 'classic' }, P('A'));
+  g.events = [];
+  throwAll(g, 'S1 S1 S1 | S1 S1 S1 |');
+  eq('halve-it: halved events', g.events.filter((e) => e.type === 'halved').length, 2);
+  eq('halve-it target "any double"', g.targets(), [{ any: 'D' }]);
+  g = new Killer({ lives: 3 }, P('A', 'B'));
+  g.g.num = [1, 2];
+  eq('killer target before becoming killer', g.targets(), [{ n: 1, m: 2 }]);
+  const r1 = new Cricket({}, P('A', 'B'));
+  throwAll(r1, 'T20');
+  const r2 = new Cricket(r1.cfg, [], JSON.parse(JSON.stringify(r1.toJSON())));
+  eq('hit map survives save/restore', r2.s.hist[0], { T20: 1 });
+
   // ---------------- stats aggregation
   const a = new X01({ start: 101 }, P('A', 'B'));
   throwAll(a, 'T20 S1 D20');

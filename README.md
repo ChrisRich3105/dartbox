@@ -118,6 +118,7 @@ sudo bash install.sh            # or: su - -c "bash $PWD/install.sh --user $USER
 | `--no-autodarts` | don't install the Autodarts client |
 | `--keep-desktop` | leave a desktop environment's autostart alone (it will fight the kiosk for the screen) |
 | `--no-sudo-group` | don't add the user to the `sudo` group |
+| `--hostname NAME` | network name, e.g. `autodarts` → `http://autodarts.local/` (default on a fresh install: `dartbox`; updates keep the current name) |
 | `DARTBOX_HOSTNAME=name` | other hostname than `dartbox` (environment variable) |
 
 The installer can be re-run any time; settings, players and statistics are kept.
@@ -179,7 +180,18 @@ On the box's own screen, every page has a small **🎯** button bottom-left that
 
 **Players** – every name entered is remembered and offered as one-tap chips (most recently used first); line-up and settings are remembered per game.
 
-**Statistics** – per player: X01 average, first-9 average, checkout %, highest checkout, best leg, 180s / 140+ / 100+, Cricket MPR, Bob's 27, doubles heat map, checkout and target practice rates, trend charts, recent sessions (wrong records can be deleted).
+**Look and sound** – a live dartboard next to the scoreboard shows your darts and what to aim for (checkout route, open cricket numbers, training target). 180s, ton-plus scores, checkouts and wins get celebrations with confetti; sounds for darts, hits, busts and wins; an optional caller ("you require 32"); a chart and hit map after every game.
+Everything can be switched off in **⚙ Settings** (per device, so the box's screen and your phone can be set up differently):
+
+| Setting | |
+|---|---|
+| Sounds, volume | master switch for everything audible |
+| Dart sounds / event sounds | per dart, or only bust / 180 / checkout / win / target hit |
+| Caller, voice | spoken scores; needs a voice on the device (the installer adds one to the box) |
+| Celebrations, confetti, animations | big messages, confetti, counting scores; animations follow the system's "reduce motion" setting |
+| Dartboard view, on phones, show targets | the board panel (wide screens by default) and the target highlights |
+
+**Statistics** – per player: an all-time hit map ("where your darts land"), X01 average, first-9 average, checkout %, highest checkout, best leg, 180s / 140+ / 100+, Cricket MPR, Bob's 27, doubles heat map, checkout and target practice rates, trend charts, recent sessions (wrong records can be deleted).
 
 **Entering darts**
 
@@ -262,7 +274,9 @@ Your data: `/var/lib/dartbox/playroom/` (players and statistics) – back it up 
 | Playroom says *Board offline* | Board manager not running (see above). You can always use the keypad or your phone. |
 | Darts are not entered automatically although *Board on* | Board manager 2.0.x may not provide dart data locally – update it (`autodarts update`) or enter darts by keypad. |
 | Screen stays black / shows a login | A desktop environment is still active: `sudo systemctl set-default multi-user.target && sudo systemctl disable display-manager` and reboot. |
-| Box not reachable as `dartbox.local` | Some networks/Windows setups don't resolve `.local` – use the IP address (shown in your router or on the hub). |
+| Box not reachable as `dartbox.local` | Some networks/Windows setups don't resolve `.local` – use the IP address (shown in your router or on the hub). Type it with a slash (`dartbox.local/`) so the browser doesn't search for it. With a FRITZ!Box, `http://dartbox/` usually works too. |
+| Want another name (e.g. `autodarts.local`) | `sudo hostnamectl set-hostname autodarts && sudo systemctl restart avahi-daemon` – updates keep it. |
+| No sound / no caller on the box's screen | Check ⚙ Settings in the playroom (sounds on, volume), and that the TV/monitor has audio over HDMI/DP. The caller needs a voice: `sudo apt install speech-dispatcher espeak-ng`. |
 | Something else | `sudo dartbox-selftest`, and the logs: `journalctl -u 'dartbox-*' -b` |
 
 Commands in Windows **Command Prompt**: quotes and `|` inside ssh commands get mangled – rather log in with `ssh user@ip` and type the commands on the box.
@@ -284,7 +298,8 @@ bin/dartbox-usbreset        USB stick reset/config (udev)
 bin/dartbox-ctl             small CLI (status / hotspot / forget / connect)
 lib/dartbox_common.py       shared helpers
 webui/index.html            the hub
-playroom/                   playroom web app (plain ES modules, no build step)
+playroom/                   playroom web app (plain ES modules, no build step):
+                              engine/games/training = rules, dartboard/charts/fx/sound = presentation
 kiosk-extension/            Chromium extension: 🎯 button + remote screen switching
 systemd/, config/           units, udev rule, default config
 tests/                      static checks + game engine tests (also run in CI)

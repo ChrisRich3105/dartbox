@@ -5,6 +5,20 @@ All notable changes. The section of a version is used as its GitHub release note
 
 Format: `## vX.Y.Z – YYYY-MM-DD`, newest first.
 
+## v1.1.0 – 2026-11-25
+
+Looks and sounds like a real darts night – and every bit of it can be switched off.
+
+- **Live dartboard** next to the scoreboard: your darts appear where they landed, and the board shows what to aim for (checkout route, open cricket numbers, the current training target).
+- **Celebrations:** 180s, ton-plus scores, checkouts, Shanghai, white horse, killers and wins get a big on-screen moment – confetti included. Busts shake.
+- **Sounds:** dart hits, target hits, bust, 180 fanfare, checkout and win jingles – made in the browser, no sound files.
+- **Caller (optional):** scores, "you require 32", "game shot and the leg" in an English voice.
+- **Animated scores:** the remaining score counts down instead of jumping.
+- **After every game:** a chart of how the leg went and a hit map per player.
+- **Statistics:** "Where your darts land" – your all-time hit map.
+- **⚙ Settings page** in the playroom: sounds, volume, caller, voice, celebrations, confetti, animations, dartboard view and targets – saved per device, so the box's screen and your phone can differ.
+- **Installer:** keeps the box's network name on updates (choose one with `--hostname`), installs a voice for the caller.
+
 ## v1.0.0 – 2026-11-24
 
 First public release.

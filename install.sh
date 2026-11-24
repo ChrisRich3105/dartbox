@@ -10,6 +10,8 @@
 #   --no-autodarts    don't install the Autodarts board client
 #   --keep-desktop    don't switch off a desktop environment (it would fight the kiosk for the screen)
 #   --no-sudo-group   don't add the user to the sudo group
+#   --hostname NAME   network name of the box (default on a fresh install: dartbox -> dartbox.local);
+#                     re-runs and updates keep whatever name the box has
 #   --update          non-interactive update mode (used by dartbox-update): only refreshes the
 #                     dartbox files and services, leaves Autodarts / desktop / sudo alone
 set -euo pipefail
@@ -17,7 +19,7 @@ cd "$(dirname "$0")"
 # "su -c" (without "-") keeps the normal user's PATH, which lacks useradd/usermod/runuser
 export PATH="/usr/local/sbin:/usr/sbin:/sbin:$PATH"
 
-HOSTNAME_NEW="${DARTBOX_HOSTNAME:-dartbox}"
+HOSTNAME_NEW="${DARTBOX_HOSTNAME:-}"
 KIOSK_USER=dartbox
 WITH_AUTODARTS=1
 KEEP_DESKTOP=0
@@ -31,7 +33,8 @@ while [ $# -gt 0 ]; do
         --keep-desktop) KEEP_DESKTOP=1 ;;
         --no-sudo-group) SUDO_GROUP=0 ;;
         --update) UPDATE_MODE=1 ;;
-        -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+        --hostname) HOSTNAME_NEW="$2"; shift ;;
+        -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
     shift
@@ -56,11 +59,11 @@ apt_install() {
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     network-manager iw wireless-regdb python3 curl ca-certificates avahi-daemon \
-    cage chromium fonts-dejavu-core xwayland dbus-user-session sudo \
+    cage chromium fonts-dejavu-core xwayland dbus-user-session sudo speech-dispatcher espeak-ng \
     firmware-iwlwifi firmware-atheros firmware-realtek 2>/dev/null \
   || DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     network-manager iw wireless-regdb python3 curl ca-certificates avahi-daemon \
-    cage chromium fonts-dejavu-core xwayland dbus-user-session sudo
+    cage chromium fonts-dejavu-core xwayland dbus-user-session sudo speech-dispatcher espeak-ng
 }
 # (firmware packages need "non-free-firmware" in sources.list - second attempt skips them)
 if [ "$UPDATE_MODE" = 1 ]; then
@@ -69,12 +72,21 @@ else
     apt_install
 fi
 
-echo "==> Hostname: $HOSTNAME_NEW"
-if [ "$(hostname)" != "$HOSTNAME_NEW" ]; then
+# Name the box only on a fresh install or when asked to - never rename it behind the user's back
+if [ -z "$HOSTNAME_NEW" ] && [ "$UPDATE_MODE" = 0 ] && [ ! -f /etc/dartbox/dartbox.conf ]; then
+    HOSTNAME_NEW=dartbox
+fi
+if ! [[ -z "$HOSTNAME_NEW" || "$HOSTNAME_NEW" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]]; then
+    echo "Invalid hostname '$HOSTNAME_NEW' (letters, digits and '-' only)"; exit 1
+fi
+if [ -n "$HOSTNAME_NEW" ] && [ "$(hostname)" != "$HOSTNAME_NEW" ]; then
+    echo "==> Hostname: $HOSTNAME_NEW"
     hostnamectl set-hostname "$HOSTNAME_NEW"
     sed -i "s/^127\.0\.1\.1.*/127.0.1.1\t$HOSTNAME_NEW/" /etc/hosts
     grep -q "^127.0.1.1" /etc/hosts || echo -e "127.0.1.1\t$HOSTNAME_NEW" >> /etc/hosts
+    systemctl try-restart avahi-daemon 2>/dev/null || true
 fi
+HOSTNAME_NEW=$(hostname)
 
 echo "==> Kiosk user"
 id "$KIOSK_USER" >/dev/null 2>&1 || useradd -m -s /bin/bash "$KIOSK_USER"

@@ -12,6 +12,14 @@
 //   standing(i)            number used to rank players (higher = better)
 //   view()                 scoreboard model for the UI
 //   summary(i)             stats saved to history for player i
+//   targets()              optional: segments to highlight on the board for the current player
+//                          [{n, m}] (m = 0: whole number), [{any: 'D'|'T'}]
+//   traceValue(i)          optional: number charted after every visit (remaining, score, …)
+//   callTurn(i)            optional: what the caller says when player i steps up
+//
+// Events: every action appends {type, …} to game.events (not part of the saved state). The UI
+// turns them into sounds, effects and caller lines: dart, turn, hit, bust, score, 180, checkout,
+// leg, match, plus game specific ones (shanghai, whitehorse, killer, out, halved, gotcha, fail).
 import { MISS } from './darts.js';
 
 export function defaultsOf(settings) {
@@ -31,9 +39,13 @@ export class Game {
   constructor(cfg = {}, players = [], restore = null) {
     this.cfg = { ...defaultsOf(this.constructor.settings), ...cfg };
     this.undoStack = [];
+    this.events = [];
     if (restore) {
       this.s = restore.s;
       this.undoStack = restore.undo || [];
+      const n = this.s.players.length;
+      this.s.hist = this.s.hist || Array.from({ length: n }, () => ({}));
+      this.s.trace = this.s.trace || Array.from({ length: n }, () => []);
       return;
     }
     const n = players.length;
@@ -47,9 +59,12 @@ export class Game {
       msg: null,
       g: {},                                     // game specific state
       ps: players.map(() => this.initStats()),
+      hist: players.map(() => ({})),             // where the darts landed: {'T20': 5, '1': 2, …}
+      trace: players.map(() => []),              // traceValue after every visit (this leg)
     };
     this.initMatch();
     this.initLeg();
+    this.resetTrace();
     this.beginVisit();
   }
 
@@ -66,7 +81,25 @@ export class Game {
   standing() { return 0; }
   summary(i) { return { ...this.s.ps[i] }; }
   hint() { return ''; }
+  targets() { return []; }
+  traceValue() { return null; }
+  callTurn() { return ''; }
   get dartsPerVisit() { return 3; }
+
+  emit(type, data = {}) { this.events.push({ type, ...data }); }
+
+  static histKey(d) {
+    if (!d || !d.m) return 'Miss';
+    if (d.n === 25) return d.m === 2 ? 'Bull' : '25';
+    return (d.m === 3 ? 'T' : d.m === 2 ? 'D' : 'S') + d.n;
+  }
+
+  resetTrace() {
+    this.s.trace = this.s.players.map((_, i) => {
+      const v = this.traceValue(i);
+      return v === null || v === undefined ? [] : [v];
+    });
+  }
 
   /** darts to count for the visit being committed: actual darts if it won the leg, else 3 */
   visitDarts() {
@@ -132,6 +165,9 @@ export class Game {
     s.msg = null;
     d = d && d.m ? { n: d.n, m: d.m } : { ...MISS };
     s.visit.push(d);
+    const h = s.hist[s.cur], key = Game.histKey(d);
+    h[key] = (h[key] || 0) + 1;
+    this.emit('dart', { d, i: s.cur, k: s.visit.length });
     this.onDart(d, s.cur);
     if (s.legWinner === null && !s.visitClosed && s.visit.length >= this.dartsPerVisit) s.visitClosed = true;
     return true;
@@ -196,6 +232,7 @@ export class Game {
     s.visitCommitted = false;
     s.visitOwner = s.cur;
     this.onVisitStart(s.cur);
+    this.emit('turn', { i: s.cur, call: this.callTurn(s.cur) });
   }
 
   /** Game logic ends the visit early (bust, player eliminated, ...) */
@@ -208,6 +245,8 @@ export class Game {
     if (this.s.visitCommitted) return;
     this.s.visitCommitted = true;
     this.onVisitEnd(this.s.visitOwner);
+    const v = this.traceValue(this.s.visitOwner);
+    if (v !== null && v !== undefined) this.s.trace[this.s.visitOwner].push(v);
   }
 
   endVisit() {
@@ -246,6 +285,7 @@ export class Game {
     } else {
       matchWon = s.legsWon[i] >= this.legsToWin();
     }
+    this.emit(matchWon ? 'match' : 'leg', { i });
     if (matchWon) {
       s.matchOver = true;
       s.winner = i;
@@ -275,6 +315,7 @@ export class Game {
     s.out.fill(false);
     s.msg = null;
     this.initLeg();
+    this.resetTrace();
     this.beginVisit();
   }
 

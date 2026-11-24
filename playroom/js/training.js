@@ -31,14 +31,14 @@ export class Bobs27 extends Game {
   ];
 
   initStats() { return { darts: 0, hits: 0, per: {} }; }
-  get targets() { return [...range(1, 20), ...(String(this.cfg.bull) === 'true' ? [25] : [])]; }
+  get targetList() { return [...range(1, 20), ...(String(this.cfg.bull) === 'true' ? [25] : [])]; }
   initLeg() { this.g.score = fill(this.n, 27); this.g.reached = fill(this.n, 0); }
-  target() { return this.targets[Math.min(this.s.round, this.targets.length) - 1]; }
+  target() { return this.targetList[Math.min(this.s.round, this.targetList.length) - 1]; }
   onVisitStart() { this.g.vhits = 0; }
 
   onDart(d, i) {
     const t = this.target();
-    if (d.n === t && d.m === 2) { this.g.vhits++; this.g.score[i] += 2 * t; }
+    if (d.n === t && d.m === 2) { this.g.vhits++; this.g.score[i] += 2 * t; this.emit('hit', { i }); }
   }
 
   onVisitEnd(i) {
@@ -49,12 +49,15 @@ export class Bobs27 extends Game {
     g.reached[i] = t;
     if (!g.vhits) {
       g.score[i] -= 2 * t;
-      if (g.score[i] < 0 && String(this.cfg.stop) === 'true') { this.msg(`${this.name(i)} drops below zero – game over`, 'bad'); finish(this, i); }
+      this.emit('fail', { i });
+      if (g.score[i] < 0 && String(this.cfg.stop) === 'true') { this.msg(`${this.name(i)} drops below zero – game over`, 'bad'); this.emit('out', { i }); finish(this, i); }
     }
   }
 
-  maxRounds() { return this.targets.length; }
+  maxRounds() { return this.targetList.length; }
   standing(i) { return this.g.score[i]; }
+  traceValue(i) { return this.g.score[i]; }
+  targets() { return this.s.legWinner === null ? [{ n: this.target(), m: 2 }] : []; }
   hint() { return this.s.legWinner === null ? `Target: ${dlabel(this.target())}` : ''; }
   view() {
     return {
@@ -101,7 +104,7 @@ export class Doubles extends Game {
   onDart(d, i) {
     const g = this.g, p = this.s.ps[i], t = this.target(i);
     const hit = d.n === t && d.m === 2;
-    p.darts++; if (hit) p.hits++;
+    p.darts++; if (hit) { p.hits++; this.emit('hit', { i }); }
     const e = p.per[t] || (p.per[t] = [0, 0]);
     e[1]++; if (hit) e[0]++;
     g.tDarts[i]++;
@@ -113,6 +116,8 @@ export class Doubles extends Game {
   }
 
   standing(i) { return this.s.ps[i].hits * 1000 - this.s.ps[i].darts; }
+  traceValue(i) { const p = this.s.ps[i]; return p.darts ? Math.round((p.hits / p.darts) * 100) : null; }
+  targets() { const t = this.target(this.cur); return t !== undefined && this.s.legWinner === null ? [{ n: t, m: 2 }] : []; }
   hint() { const t = this.target(this.cur); return t !== undefined && this.s.legWinner === null ? `Target: ${dlabel(t)}` : ''; }
   view() {
     return {
@@ -162,6 +167,7 @@ export class CheckoutPractice extends Game {
     p.attempts++; p.darts += g.used[i];
     if (ok) { p.success++; p.successDarts += g.used[i]; }
     p.results.push([g.seq[g.idx[i]], ok ? g.used[i] : 0]);
+    this.emit(ok ? 'checkout' : 'fail', { i, value: g.seq[g.idx[i]] });
     g.idx[i]++; g.used[i] = 0;
     if (g.idx[i] >= g.seq.length) { finish(this, i, ok ? 'Checked out – session complete' : 'Session complete'); return; }
     g.rem[i] = g.seq[g.idx[i]];
@@ -175,6 +181,7 @@ export class CheckoutPractice extends Game {
     if (r < 0 || (r === 0 && !this.outOk(d)) || (r === 1 && this.cfg.outMode !== 'straight')) {
       g.used[i] += 3 - this.s.visit.length;                   // bust burns the visit
       g.rem[i] = g.vs;
+      this.emit('bust', { i });
       if (g.used[i] >= limit) this.advance(i, false); else this.closeVisit('Bust!');
       return;
     }
@@ -184,6 +191,15 @@ export class CheckoutPractice extends Game {
   }
 
   standing(i) { return this.s.ps[i].success * 1000 - this.s.ps[i].darts; }
+  traceValue(i) { return this.s.ps[i].success; }
+
+  targets() {
+    const g = this.g, i = this.cur;
+    if (this.s.legWinner !== null || g.idx[i] >= g.seq.length) return [];
+    const left = Math.min(3 - this.s.visit.length, +this.cfg.limit - g.used[i]);
+    const r = left > 0 ? checkout(g.rem[i], left, this.cfg.outMode) : null;
+    return r ? r.map((d) => ({ n: d.n, m: d.m })) : [];
+  }
 
   hint() {
     const g = this.g, i = this.cur;
@@ -230,12 +246,14 @@ export class TargetPractice extends Game {
   onDart(d, i) {
     const p = this.s.ps[i], t = this.g.t;
     p.darts++; p.points += score(d);
-    if (d.n === t.n && d.m === t.m) p.exact++;
+    if (d.n === t.n && d.m === t.m) { p.exact++; this.emit('hit', { i }); }
     if (d.n === t.n && d.m) p.number++;
     if (p.darts >= +this.cfg.darts) finish(this, i, 'Done');
   }
 
   standing(i) { return this.s.ps[i].exact * 10000 + this.s.ps[i].points; }
+  traceValue(i) { const p = this.s.ps[i]; return p.darts ? Math.round((p.exact / p.darts) * 100) : null; }
+  targets() { return this.s.legWinner === null ? [{ n: this.g.t.n, m: this.g.t.m }] : []; }
   hint() { return this.s.legWinner === null ? `Target: ${this.cfg.target}` : ''; }
   view() {
     return {
@@ -266,6 +284,7 @@ export class AtcTraining extends AroundTheClock {
     const g = this.g, t = this.target(i);
     if (!this.matches(d, t)) return;
     this.s.ps[i].hits++;
+    this.emit('hit', { i });
     const adv = String(this.cfg.skip) === 'true' && this.cfg.hit === 'any' && t !== 25 ? d.m : 1;
     let np = g.pos[i] + adv;
     const last = g.seq.length - 1;
