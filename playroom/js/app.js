@@ -710,8 +710,9 @@ const TRACE_LABEL = { x01: 'Points left (last leg)', cricket: 'Score (last leg)'
 
 function resultsVisuals() {
   const s = game.s, G = game.constructor;
-  const series = s.players.map((p, i) => ({ name: p.name, values: (s.trace && s.trace[i]) || [], color: PLAYER_COLORS[i % PLAYER_COLORS.length] }));
-  const chart = lineChart(series, { label: t(TRACE_LABEL[G.stype] || 'Score'), xLabel: t('visits →') });
+  const series = s.players.map((p, i) => ({ name: p.name, values: (s.trace && s.trace[i]) || [], color: PLAYER_COLORS[i] }))
+    .filter((x) => x.values.length > 1);
+  const chart = lineChart(series, { label: t(TRACE_LABEL[G.stype] || 'Score'), xTitle: t('Visit'), decimals: 1 });
   const heats = (s.hist || []).map((h, i) => ({ h, i })).filter(({ h }) => Object.keys(h).length).slice(0, 4);
   const boards = heats.length ? `<div class="heatgrid">${heats.map(({ h, i }) => `<div class="heatcell">
       ${boardSVG({ heat: h, small: true })}<div><b>${esc(s.players[i].name)}</b><br><span class="mut">${esc(topSegments(h))}</span></div></div>`).join('')}</div>` : '';
@@ -822,17 +823,13 @@ async function renderPlayers() {
 }
 
 // ------------------------------------------------------------------ statistics
-function sparkSVG(series) {
+// one chart per game type: the value of every session, oldest -> newest (last 40)
+function trendChart(series, label) {
   const pts = series.slice(-40);
   if (pts.length < 2) return `<p class="mut">${t('Play more sessions to see a trend.')}</p>`;
-  const vs = pts.map((p) => p.v), lo = Math.min(...vs), hi = Math.max(...vs), span = hi - lo || 1;
-  const W = 600, H = 100, P = 6;
-  const xy = pts.map((p, k) => [P + (k * (W - 2 * P)) / (pts.length - 1), H - P - ((p.v - lo) * (H - 2 * P)) / span]);
-  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-    <polyline fill="none" stroke="var(--acc)" stroke-width="2.5" vector-effect="non-scaling-stroke" points="${xy.map((p) => p.join(',')).join(' ')}"/>
-    ${xy.map(([x, y], k) => `<circle cx="${x}" cy="${y}" r="3.5" fill="var(--acc)"><title>${fmtDate(pts[k].ts)}: ${pts[k].v}</title></circle>`).join('')}
-    <text x="${P}" y="12" fill="var(--mut)" font-size="12">max ${hi}</text>
-    <text x="${P}" y="${H - 2}" fill="var(--mut)" font-size="12">min ${lo}</text></svg>`;
+  const day = (ts) => new Date(ts * 1000).toLocaleDateString(getLang() === 'de' ? 'de-DE' : 'en-GB', { day: 'numeric', month: 'numeric' });
+  return lineChart([{ name: label, values: pts.map((p) => p.v), color: PLAYER_COLORS[0] }],
+    { label, xLabels: pts.map((p) => day(p.ts)), decimals: 1 });
 }
 
 function doublesGrid(per) {
@@ -863,7 +860,7 @@ async function renderStats(pid) {
     ${groups.map((g) => `<div class="card">
       <div class="row spread"><h3>${esc(tr(g.title))}</h3><span class="mut">${t(g.count === 1 ? '{n} session' : '{n} sessions', { n: g.count })}${g.multi ? ` · ${t('{w} won of {m}', { w: g.wins, m: g.multi })}` : ''}</span></div>
       ${g.cards.length ? `<div class="kv">${g.cards.map(([k, v]) => `<div><b>${esc(v)}</b><span>${esc(t(k))}</span></div>`).join('')}</div>` : ''}
-      ${g.series ? `<div class="mut" style="margin-top:8px;font-size:13px">${t('{label} per session', { label: esc(t(g.seriesLabel)) })}</div>${sparkSVG(g.series)}` : ''}
+      ${g.series ? trendChart(g.series, t('{label} per session', { label: t(g.seriesLabel) })) : ''}
       ${g.doubles ? doublesGrid(g.doubles) : ''}
     </div>`).join('') || `<p class="mut">${t('No games or training sessions recorded yet.')}</p>`}
     ${hist.length ? `<h2>${t('Recent sessions')}</h2><div class="card"><table class="hist">${hist.slice(-25).reverse().map((r) => `<tr>

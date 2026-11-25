@@ -164,7 +164,7 @@ const DE = {
   // ---- statistics
   'Statistics': 'Statistik', 'No players yet – play a game or training first.': 'Noch keine Spieler – spiel erst ein Spiel oder Training.',
   'Player': 'Spieler', 'Where your darts land': 'Wo deine Darts landen', '{n} darts, last {m} sessions': '{n} Darts, letzte {m} Einheiten',
-  '{n} session': '{n} Einheit', '{n} sessions': '{n} Einheiten', '{w} won of {m}': '{w} von {m} gewonnen', '{label} per session': '{label} pro Einheit',
+  '{n} session': '{n} Einheit', '{n} sessions': '{n} Einheiten', '{w} won of {m}': '{w} von {m} gewonnen', '{label} per session': '{label} pro Einheit', 'Show values': 'Werte anzeigen', 'Chart': 'Diagramm', 'Visit': 'Aufnahme',
   'No games or training sessions recorded yet.': 'Noch keine Spiele oder Trainings gespeichert.', 'Recent sessions': 'Letzte Einheiten',
   '(stopped early)': '(vorzeitig beendet)', 'Delete this record': 'Eintrag löschen',
   'Delete this session from the statistics (for all its players)?': 'Diese Einheit aus der Statistik löschen (für alle Spieler)?',

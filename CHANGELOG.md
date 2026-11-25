@@ -5,6 +5,14 @@ All notable changes. The section of a version is used as its GitHub release note
 
 Format: `## vX.Y.Z – YYYY-MM-DD`, newest first.
 
+## v1.3.1 – 2026-11-25
+
+Cleaner charts.
+
+- **Statistics and results charts redrawn:** real axes with round numbers, dates under the trend, no more stretched text or squashed dots, and a scale that no longer turns a small change into a cliff.
+- **Tap or hover a chart** to read the exact value of every player at that point; *Show values* lists them as a table.
+- Player colours are now a colour-blind-checked set.
+
 ## v1.3.0 – 2026-11-25
 
 Board trouble? Fix it without leaving the game.
