@@ -4,7 +4,7 @@ import os
 import subprocess
 import time
 
-CONF_PATH = "/etc/dartbox/dartbox.conf"
+CONF_PATH = os.environ.get("DARTBOX_CONF", "/etc/dartbox/dartbox.conf")
 RUN_DIR = "/run/dartbox"
 STATE_DIR = "/var/lib/dartbox"
 HOTSPOT_CON = "dartbox-hotspot"

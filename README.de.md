@@ -11,6 +11,7 @@ Die ausführliche Anleitung (englisch) steht in der [README.md](README.md).
 - **WLAN-Einrichtung per Hotspot:** kein bekanntes WLAN? Die Box öffnet `Dartbox-xxxx` (Passwort `dartsetup`), die Einrichtungsseite erscheint auf dem Handy von selbst.
 - **Hub** unter `http://dartbox.local/` – Autodarts, Board Manager, Playroom, WLAN, Updates.
 - **Lokaler Playroom** unter `http://dartbox.local:8081/` – X01, Cricket, Around the Clock, Shanghai, Killer, Halve-It, Count Up, Baseball, Gotcha und sechs Trainingsmodi mit Statistik. Ohne Internet und ohne Autodarts-Abo.
+- **Board-Panel im Playroom:** Board-Chip oben rechts antippen – Live-Kamerabild, Status, Kalibrierung je Kamera und direkt **Zurücksetzen**, **Kalibrieren**, Erkennung starten/stoppen, Kameras neu starten.
 - **Caller mit natürlicher Stimme** („Hundertachtzig!“, „Anna, du brauchst 32.“), Jubel-Effekte, Töne, Dartboard-Ansicht – alles einzeln abschaltbar.
 - **Online-Updates** mit Versionshinweisen, Selbsttest und automatischem Zurückrollen.
 
@@ -52,6 +53,7 @@ Neue Versionen erscheinen im Hub unter **System** mit den Neuigkeiten. **Update*
 |---|---|
 | „nicht in der sudoers-Datei“ | Die `su - -c "…"`-Variante nehmen (root-Passwort). Nach der Installation darf dein Benutzer sudo (neu anmelden). |
 | Board Manager `:3180` nicht erreichbar | Autodarts-Dienst fehlt: `autodarts` starten → **Service** → installieren. |
+| Board hängt beim Darts-Ziehen / muss kalibriert werden | Im Playroom den Board-Chip antippen → **Zurücksetzen** bzw. **Kalibrieren** (vorher Darts ziehen). |
 | `dartbox.local` geht nicht | IP-Adresse nehmen, oder mit Schrägstrich tippen: `dartbox.local/`. Bei einer FRITZ!Box klappt meist auch `http://dartbox/`. |
 | Kein Ton am Fernseher | Playroom → ⚙ Einstellungen (Töne/Caller an, Lautstärke), Ton am TV über HDMI/DP prüfen, nach der Installation einmal neu starten. |
 

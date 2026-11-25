@@ -25,6 +25,9 @@ Serves the playroom web app and a small JSON API:
   GET    /api/say?lang=&style=&text=     caller phrase as WAV (Piper TTS, cached on disk)
   GET    /api/board                      normalised Autodarts board manager state
   POST   /api/board/reset                reset the board manager (stuck takeout)
+  GET    /api/board/status               board health: detection running, calibration, cameras
+  GET    /api/board/image                live camera picture (JPEG) from the board manager
+  POST   /api/board/{calibrate|start|stop|restart}   board manager commands
 
 Data lives in /var/lib/dartbox/playroom (override with DARTBOX_PLAYROOM_DATA).
 """
@@ -35,6 +38,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import urllib.error
 import urllib.parse
 import time
 import urllib.request
@@ -175,6 +179,7 @@ ACTIVE = os.path.join(DATA, "active.json")
 LOCK = threading.Lock()
 INPUT = {"seq": 0, "items": []}          # remote keypad queue (in memory)
 BOARD_CACHE = {"t": 0.0, "data": None}
+SYSTEM_CACHE = {"t": 0.0, "data": None}
 
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json",
@@ -245,7 +250,7 @@ def board_state():
     with LOCK:
         if BOARD_CACHE["data"] is not None and now - BOARD_CACHE["t"] < 0.2:
             return BOARD_CACHE["data"]
-    url = load_config().get("BOARD_MANAGER_URL", "http://localhost:3180").rstrip("/") + "/api/state"
+    url = bm_url("/api/state")
     try:
         with urllib.request.urlopen(url, timeout=1.5) as r:
             st = json.loads(r.read() or b"{}")
@@ -265,14 +270,93 @@ def board_state():
     return data
 
 
+def bm_url(path):
+    return load_config().get("BOARD_MANAGER_URL", "http://localhost:3180").rstrip("/") + path
+
+
+# playroom name -> board manager endpoint (commands are POSTs; PUT is tried if a version wants that)
+BOARD_COMMANDS = {
+    "reset": "/api/reset",                              # clears a stuck takeout / the current visit
+    "calibrate": "/api/config/calibration/auto",        # automatic calibration of all cameras
+    "start": "/api/start",                              # dart detection on
+    "stop": "/api/stop",                                # dart detection off
+    "restart": "/api/restart",                          # restart the cameras / detection
+}
+
+
+def board_command(name):
+    for method in ("POST", "PUT"):
+        req = urllib.request.Request(bm_url(BOARD_COMMANDS[name]), data=b"", method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=8):
+                return True, ""
+        except urllib.error.HTTPError as e:
+            if e.code in (404, 405):
+                continue
+            return False, f"HTTP {e.code}"
+        except Exception as e:
+            return False, str(e)[:200]
+    return False, "not supported by this board manager version"
+
+
 def board_reset():
-    url = load_config().get("BOARD_MANAGER_URL", "http://localhost:3180").rstrip("/") + "/api/reset"
-    req = urllib.request.Request(url, data=b"", method="POST")
+    return board_command("reset")[0]
+
+
+def board_status():
+    """Compact health summary from the board manager's /api/system (+ /api/state as fallback)."""
+    now = time.monotonic()
+    with LOCK:
+        if SYSTEM_CACHE["data"] is not None and now - SYSTEM_CACHE["t"] < 1.0:
+            return SYSTEM_CACHE["data"]
     try:
-        with urllib.request.urlopen(req, timeout=3):
-            return True
+        with urllib.request.urlopen(bm_url("/api/system"), timeout=2.5) as r:
+            sysd = json.loads(r.read() or b"{}")
+        cal = sysd.get("calibration") or {}
+        status = sysd.get("status") or {}
+        turn = sysd.get("turn") or {}
+        fps = {c.get("id"): c.get("fps") for c in (sysd.get("camStats") or []) if isinstance(c, dict)}
+        cams = []
+        for i, c in enumerate(cal.get("cams") or []):
+            cams.append({
+                "calibrated": bool(c.get("calibrated")), "calibrating": bool(c.get("calibrating")),
+                "failed": bool(c.get("fitFailed")),
+                "error_px": round(float(c["errorPx"]), 2) if isinstance(c.get("errorPx"), (int, float)) else None,
+                "fps": fps.get(i),
+            })
+        cam_state = sysd.get("camState") or {}
+        stats = sysd.get("stats") or {}
+        data = {
+            "ok": True,
+            "version": status.get("version"),
+            "running": bool(turn.get("running", cam_state.get("isRunning", True))),
+            "cams_open": bool(cam_state.get("isOpened", True)),
+            "status": str(turn.get("status", "")).replace(" ", "").lower(),
+            "event": str(turn.get("event", "")).replace(" ", "").lower(),
+            "throws": [norm_dart(t) for t in (turn.get("throws") or []) if isinstance(t, dict)],
+            "calibrated": bool(status.get("calibrated", cal.get("calibrated", False))),
+            "calibrating": int(status.get("calibratingCams") or 0) > 0 or any(c["calibrating"] for c in cams),
+            "blocker": status.get("blocker") or "none",
+            "online": status.get("link") == "connected",
+            "cams": cams,
+            "cpu": round(stats["cpuPercent"]) if isinstance(stats.get("cpuPercent"), (int, float)) else None,
+        }
+    except Exception as e:  # older board manager without /api/system, or not running
+        st = board_state()
+        data = dict(st, version=None, calibrated=None, calibrating=False, cams=[], blocker="none")
+        if not st.get("ok"):
+            data["error"] = st.get("error") or str(e)[:200]
+    with LOCK:
+        SYSTEM_CACHE.update(t=now, data=data)
+    return data
+
+
+def board_image():
+    try:
+        with urllib.request.urlopen(bm_url("/api/img/live"), timeout=4) as r:
+            return r.read(), r.headers.get("Content-Type", "image/jpeg")
     except Exception:
-        return False
+        return None, None
 
 
 # ------------------------------------------------------------------ HTTP
@@ -351,6 +435,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(503, {"error": "voice generation failed"})
             with open(path, "rb") as f:
                 return self.send(200, f.read(), "audio/wav")
+        if what == "board" and len(parts) > 2 and parts[2] == "status":
+            return self.send(200, board_status())
+        if what == "board" and len(parts) > 2 and parts[2] == "image":
+            img, ctype = board_image()
+            if img is None:
+                return self.send(503, {"error": "no camera picture"})
+            return self.send(200, img, ctype)
         if what == "board":
             return self.send(200, board_state())
         return self.send(404, {"error": "not found"})
@@ -406,8 +497,12 @@ class Handler(BaseHTTPRequestHandler):
                         "index": data.get("index")}
                 INPUT["items"] = (INPUT["items"] + [item])[-50:]
             return self.send(200, {"ok": True})
-        if what == "board" and sub == "reset":
-            return self.send(200, {"ok": board_reset()})
+        if what == "board" and sub in BOARD_COMMANDS:
+            ok, err = board_command(sub)
+            with LOCK:
+                SYSTEM_CACHE["data"] = None
+                BOARD_CACHE["data"] = None
+            return self.send(200 if ok else 502, {"ok": ok, "error": err})
         return self.send(404, {"error": "not found"})
 
     def do_PUT(self):

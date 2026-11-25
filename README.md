@@ -200,7 +200,8 @@ Everything can be switched off in **⚙ Settings** (per device, so the box's scr
 
 **Entering darts**
 
-- **Automatic:** with *Board on* (top right; on by default on the box's screen) darts detected by the Autodarts board are entered by themselves; pulling the darts out = next player. If the board hangs in "takeout", tap the board chip to reset it.
+- **Automatic:** with *Board on* (top right; on by default on the box's screen) darts detected by the Autodarts board are entered by themselves; pulling the darts out = next player.
+- **Board panel:** tap the board chip (top right) for the board's status – live camera picture, detection, calibration per camera – and one-tap **Reset** (stuck takeout), **Calibrate**, **Start/Stop detection** and **Restart cameras**. The chip turns red when the board isn't calibrated or hangs in takeout for more than 20 s. Automatic detection is switched on/off per device in the same panel.
 - **Keypad:** tap *Double* / *Treble*, then the number; *Next* = next player (missing darts count as misses). Tap a dart in the visit bar to correct it – also fixes wrong detections.
 - **Phone as remote keypad:** open the playroom on your phone while a game runs on the screen → *Remote keypad*.
 - **Keyboard:** Enter = next, Backspace = undo, D / T = double / treble, M = miss.
@@ -279,6 +280,7 @@ Your data: `/var/lib/dartbox/playroom/` (players and statistics) – back it up 
 | Board manager `:3180` refuses the connection | The Autodarts service isn't installed or running: log in as your user, run `autodarts`, install the service in its **Service** section. Check with `systemctl --user status autodarts`. |
 | `autodarts` exits immediately without output | It needs a real terminal: use `ssh -t …` or log in directly on the box. Try `autodarts --help`. |
 | Playroom says *Board offline* | Board manager not running (see above). You can always use the keypad or your phone. |
+| Board hangs in takeout / needs calibrating | Playroom → tap the board chip → **Reset** or **Calibrate** (take the darts out first). |
 | Darts are not entered automatically although *Board on* | Board manager 2.0.x may not provide dart data locally – update it (`autodarts update`) or enter darts by keypad. |
 | Screen stays black / shows a login | A desktop environment is still active: `sudo systemctl set-default multi-user.target && sudo systemctl disable display-manager` and reboot. |
 | Box not reachable as `dartbox.local` | Some networks/Windows setups don't resolve `.local` – use the IP address (shown in your router or on the hub). Type it with a slash (`dartbox.local/`) so the browser doesn't search for it. With a FRITZ!Box, `http://dartbox/` usually works too. |

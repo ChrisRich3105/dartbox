@@ -173,28 +173,185 @@ function inputDart(d) {
 }
 
 // ------------------------------------------------------------------ Autodarts board input
-const board = { on: store.get('board', isKiosk), seen: null, key: null, st: null };
+const board = { on: store.get('board', isKiosk), seen: null, key: null, st: null, health: null, takeoutSince: 0 };
+const TAKEOUT_STUCK_MS = 20000;
+const isTakeout = (st) => !!(st && st.status && st.status.startsWith('takeout'));
+const takeoutStuck = () => board.takeoutSince > 0 && Date.now() - board.takeoutSince > TAKEOUT_STUCK_MS;
 
 function boardChip() {
   const c = document.getElementById('boardchip');
   if (!board.on) { c.className = 'chip'; c.textContent = t('Board off'); return; }
-  const st = board.st;
+  const st = board.st, h = board.health;
   if (!st) { c.className = 'chip wait'; c.textContent = t('Board …'); return; }
   if (!st.ok) { c.className = 'chip err'; c.textContent = t('Board offline'); return; }
-  const takeout = st.status && st.status.startsWith('takeout');
-  c.className = 'chip ' + (takeout ? 'wait' : 'on');
-  c.textContent = takeout ? t('Board: takeout') : t('Board on · {n} in board', { n: st.throws.length });
+  if (h && h.ok && h.calibrating) { c.className = 'chip wait'; c.textContent = t('Board: calibrating …'); return; }
+  if (h && h.ok && h.calibrated === false) { c.className = 'chip err'; c.textContent = t('Board: not calibrated'); return; }
+  if (st.running === false) { c.className = 'chip wait'; c.textContent = t('Board: stopped'); return; }
+  if (isTakeout(st)) {
+    const stuck = takeoutStuck();
+    c.className = 'chip ' + (stuck ? 'err' : 'wait');
+    c.textContent = stuck ? t('Takeout stuck? Tap') : t('Board: takeout');
+    return;
+  }
+  c.className = 'chip on';
+  c.textContent = t('Board on · {n} in board', { n: st.throws.length });
 }
 
-document.getElementById('boardchip').onclick = async () => {
-  if (board.on && board.st && board.st.ok && board.st.status && board.st.status.startsWith('takeout')
-      && confirm(t('Board seems stuck in takeout. Reset the board manager?'))) {
-    await api.send('POST', 'board/reset'); return;
+document.getElementById('boardchip').onclick = () => openBoardPanel();
+
+// The slower health check (calibration, cameras) feeds the chip even while the panel is closed.
+async function pollBoardHealth() {
+  try {
+    if (board.on && !boardPanel.open) board.health = await api.get('board/status');
+  } catch { board.health = null; } finally {
+    boardChip();
+    setTimeout(pollBoardHealth, 6000);
   }
-  board.on = !board.on; board.seen = null; board.st = null;
+}
+
+// ------------------------------------------------------------------ board panel (status, reset, calibrate)
+const boardPanel = { open: false, timer: null, imgTimer: null, busy: '', lastSrc: '' };
+
+function openBoardPanel() {
+  let el = document.getElementById('boardpanel');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'boardpanel';
+    el.innerHTML = '<div class="bp-sheet" role="dialog" aria-modal="true"></div>';
+    el.onclick = (e) => { if (e.target === el) closeBoardPanel(); };
+    document.body.appendChild(el);
+  }
+  el.hidden = false;
+  boardPanel.open = true;
+  renderBoardSheet(board.health);
+  refreshBoardPanel();
+  refreshBoardImage();
+}
+
+function closeBoardPanel() {
+  boardPanel.open = false;
+  clearTimeout(boardPanel.timer); clearTimeout(boardPanel.imgTimer);
+  const el = document.getElementById('boardpanel');
+  if (el) el.hidden = true;
+}
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && boardPanel.open) closeBoardPanel(); });
+
+async function refreshBoardPanel() {
+  clearTimeout(boardPanel.timer);
+  if (!boardPanel.open) return;
+  try { board.health = await api.get('board/status'); } catch { board.health = { ok: false }; }
+  if (!boardPanel.open) return;
+  renderBoardSheet(board.health);
+  boardChip();
+  boardPanel.timer = setTimeout(refreshBoardPanel, board.health && board.health.calibrating ? 1000 : 2000);
+}
+
+// Camera picture: loaded off-screen and swapped in, so it never flickers
+function refreshBoardImage() {
+  clearTimeout(boardPanel.imgTimer);
+  if (!boardPanel.open) return;
+  const next = new Image();
+  next.onload = () => {
+    boardPanel.lastSrc = next.src;
+    const box = document.querySelector('#boardpanel .bp-cam');
+    if (box) { box.querySelector('img').src = next.src; box.classList.remove('nocam'); }
+    boardPanel.imgTimer = setTimeout(refreshBoardImage, 1500);
+  };
+  next.onerror = () => {
+    boardPanel.lastSrc = '';
+    const box = document.querySelector('#boardpanel .bp-cam');
+    if (box) box.classList.add('nocam');
+    boardPanel.imgTimer = setTimeout(refreshBoardImage, 4000);
+  };
+  next.src = 'api/board/image?t=' + Date.now();
+}
+
+function boardHeadline(h) {
+  if (!h) return ['wait', '…', t('Checking the board …'), ''];
+  if (!h.ok) return ['err', '⚠', t('Board manager not reachable'), t('Is Autodarts running on the box? A restart of the box usually helps.')];
+  if (h.calibrating) return ['wait', '🎯', t('Calibrating …'), t('Keep the board empty until it is finished.')];
+  if (h.calibrated === false) return ['err', '⚠', t('Not calibrated'), t('Take all darts out of the board and press Calibrate.')];
+  if (h.running === false) return ['wait', '⏸', t('Detection is stopped'), t('Press Start to detect darts again.')];
+  if (isTakeout(h)) {
+    return takeoutStuck()
+      ? ['err', '✋', t('Takeout seems stuck'), t('All darts out of the board? Then press Reset.')]
+      : ['wait', '✋', t('Takeout – pull the darts'), t('Detection continues once the board is empty.')];
+  }
+  return ['ok', '✓', t('Ready – throw!'), h.throws && h.throws.length ? t('{n} darts in the board', { n: h.throws.length }) : t('Board is empty.')];
+}
+
+function renderBoardSheet(h) {
+  const sheet = document.querySelector('#boardpanel .bp-sheet');
+  if (!sheet) return;
+  const [kind, icon, title, sub] = boardHeadline(h);
+  const ok = !!(h && h.ok);
+  const busy = boardPanel.busy;
+  const yes = (b) => (b ? `<span class="good">${t('yes')}</span>` : `<span class="bad">${t('no')}</span>`);
+  const cams = ok && h.cams && h.cams.length ? h.cams.map((c, i) => {
+    const cls = c.failed || !c.calibrated ? 'bad' : c.calibrating ? 'wait' : 'good';
+    const what = c.calibrating ? t('calibrating') : c.failed ? t('failed') : c.calibrated ? '✓' : t('not calibrated');
+    const err = c.calibrated && c.error_px !== null && c.error_px !== undefined ? ` · ${c.error_px} px` : '';
+    return `<span class="bp-camchip ${cls}" title="${esc(t('Calibration error (lower is better)'))}">${t('Cam {n}', { n: i + 1 })}: ${what}${err}${c.fps ? ` · ${c.fps} fps` : ''}</span>`;
+  }).join('') : '';
+  const inBoard = ok && h.throws && h.throws.length ? h.throws.map((d) => esc(label(d))).join(' · ') : '';
+  const dis = (cond) => (cond ? '' : 'disabled');
+  sheet.innerHTML = `
+    <div class="bp-head"><h2>${t('Autodarts board')}</h2><button class="ghost bp-x" data-bp="close" aria-label="${esc(t('Close'))}">✕</button></div>
+    <div class="bp-status ${kind}"><span class="bp-icon">${icon}</span><div><b>${esc(title)}</b>${sub ? `<div class="mut">${esc(sub)}</div>` : ''}</div></div>
+    <div class="bp-cam ${boardPanel.lastSrc ? '' : 'nocam'}"><img alt="${esc(t('Live camera picture'))}" ${boardPanel.lastSrc ? `src="${boardPanel.lastSrc}"` : ''}><span class="mut">${t('No camera picture')}</span></div>
+    ${ok ? `<div class="bp-facts">
+      <div>${t('Detection')}: ${h.running === false ? `<span class="wait">${t('stopped')}</span>` : `<span class="good">${t('running')}</span>`}</div>
+      <div>${t('Calibrated')}: ${h.calibrated === null || h.calibrated === undefined ? '–' : yes(h.calibrated)}</div>
+      ${inBoard ? `<div>${t('In the board')}: ${inBoard}</div>` : ''}
+      ${h.version ? `<div class="mut">${t('Board manager')} ${esc(h.version)}${h.cpu !== null && h.cpu !== undefined ? ` · CPU ${h.cpu}%` : ''}</div>` : ''}
+    </div>` : ''}
+    ${cams ? `<div class="bp-cams">${cams}</div>` : ''}
+    <div class="bp-actions">
+      <button class="primary" data-bp="reset" ${dis(ok && !busy)}>${busy === 'reset' ? '…' : t('↺ Reset')}<small>${t('stuck takeout, wrong darts')}</small></button>
+      <button data-bp="calibrate" ${dis(ok && !busy && !h.calibrating)}>${busy === 'calibrate' ? '…' : t('🎯 Calibrate')}<small>${t('board must be empty')}</small></button>
+      ${ok && h.running === false
+        ? `<button data-bp="start" ${dis(!busy)}>${busy === 'start' ? '…' : t('▶ Start detection')}</button>`
+        : `<button data-bp="stop" ${dis(ok && !busy)}>${busy === 'stop' ? '…' : t('⏸ Stop detection')}</button>`}
+      <button class="ghost" data-bp="restart" ${dis(ok && !busy)}>${busy === 'restart' ? '…' : t('⟳ Restart cameras')}</button>
+    </div>
+    <label class="setrow"><div><b>${t('Use the board in the playroom')}</b><div class="mut">${t('Off: enter darts by hand (this device only).')}</div></div>
+      <input type="checkbox" class="switch" data-bp="toggle" ${board.on ? 'checked' : ''}></label>
+    <p class="mut bp-foot"><a href="http://${location.hostname}:3180/" target="_blank" rel="noopener">${t('Open the full board manager')} ↗</a></p>`;
+  sheet.querySelectorAll('[data-bp]').forEach((b) => {
+    const a = b.dataset.bp;
+    if (a === 'toggle') b.onchange = () => setBoardOn(b.checked);
+    else b.onclick = () => boardAction(a);
+  });
+}
+
+const BOARD_CONFIRM = {
+  calibrate: 'Calibrate the board now? Take all darts out first – it takes a few seconds.',
+  restart: 'Restart the cameras? Detection pauses for a moment.',
+  stop: 'Stop dart detection? Darts are then not recognised until you press Start.',
+};
+
+async function boardAction(a) {
+  if (a === 'close') { closeBoardPanel(); return; }
+  if (BOARD_CONFIRM[a] && !confirm(t(BOARD_CONFIRM[a]))) return;
+  boardPanel.busy = a; renderBoardSheet(board.health);
+  let r;
+  try { r = await api.send('POST', 'board/' + a); } catch { r = { ok: false }; }
+  boardPanel.busy = '';
+  if (r.ok) {
+    if (a === 'reset') { board.takeoutSince = 0; board.seen = null; }
+    toast({ reset: t('Board reset'), calibrate: t('Calibration started'), start: t('Detection started'),
+            stop: t('Detection stopped'), restart: t('Cameras restarting …') }[a], 'ok');
+  } else {
+    toast(t('The board manager did not accept that ({error})', { error: r.error || '?' }), 'err', 4000);
+  }
+  refreshBoardPanel();
+}
+
+function setBoardOn(on) {
+  board.on = on; board.seen = null; board.st = null;
   store.set('board', board.on); boardChip();
   toast(board.on ? t('Automatic detection on') : t('Automatic detection off – enter darts manually'), 'info');
-};
+}
 
 async function pollBoard() {
   try {
@@ -202,6 +359,7 @@ async function pollBoard() {
     let st;
     try { st = await api.get('board'); } catch { st = { ok: false, throws: [] }; }
     board.st = st;
+    if (isTakeout(st)) { if (!board.takeoutSince) board.takeoutSince = Date.now(); } else board.takeoutSince = 0;
     if (!st.ok || !game) { board.seen = null; return; }
     const t = st.throws || [];
     if (board.seen === null) { board.seen = t.length; return; }      // ignore darts already in the board
@@ -828,6 +986,7 @@ async function start() {
   setTimeout(prewarmVoice, 8000);
   boardChip();
   pollBoard();
+  pollBoardHealth();
   pollRemote();
 }
 start();

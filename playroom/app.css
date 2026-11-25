@@ -176,3 +176,29 @@ input.switch { appearance: none; -webkit-appearance: none; width: 48px; height: 
 input.switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: left .15s; }
 input.switch:checked { background: var(--ok); }
 input.switch:checked::after { left: 23px; }
+
+/* ---------- board panel ---------- */
+#boardpanel { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.55); display: flex; justify-content: flex-end; }
+#boardpanel[hidden] { display: none; }
+.bp-sheet { width: min(440px, 100%); height: 100%; overflow-y: auto; background: var(--panel); border-left: 1px solid var(--line); padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 12px; animation: bp-in .18s ease-out; }
+@keyframes bp-in { from { transform: translateX(30px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .bp-sheet { animation: none; } }
+.bp-head { display: flex; align-items: center; justify-content: space-between; }
+.bp-head h2 { margin: 0; }
+.bp-x { padding: 6px 12px; }
+.bp-status { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: var(--radius); background: var(--panel2); }
+.bp-status .bp-icon { font-size: 26px; width: 34px; text-align: center; flex: none; }
+.bp-status.ok { background: #0f3d1c; } .bp-status.ok b { color: var(--ok); }
+.bp-status.wait { background: #3d2a05; } .bp-status.wait b { color: var(--warn); }
+.bp-status.err { background: #3d1513; } .bp-status.err b { color: #ff8a80; }
+.bp-cam { border-radius: var(--radius); overflow: hidden; background: #0e1013; display: flex; align-items: center; justify-content: center; flex: none; min-height: 70px; }
+.bp-cam img { width: 100%; height: auto; display: block; }
+.bp-cam > span { display: none; } .bp-cam.nocam img { display: none; } .bp-cam.nocam > span { display: block; }
+.bp-facts { display: grid; gap: 4px; font-size: 14px; }
+.bp-facts .good, .bp-camchip.good { color: var(--ok); } .bp-facts .bad, .bp-camchip.bad { color: #ff8a80; } .bp-facts .wait, .bp-camchip.wait { color: var(--warn); }
+.bp-cams { display: flex; flex-wrap: wrap; gap: 6px; }
+.bp-camchip { font-size: 12px; padding: 4px 9px; border-radius: 99px; background: var(--panel2); }
+.bp-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.bp-actions button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 12px 8px; min-height: 56px; }
+.bp-actions button small { font-size: 11px; font-weight: 500; opacity: .75; }
+.bp-foot { margin: 0; font-size: 14px; }

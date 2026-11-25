@@ -5,6 +5,15 @@ All notable changes. The section of a version is used as its GitHub release note
 
 Format: `## vX.Y.Z – YYYY-MM-DD`, newest first.
 
+## v1.3.0 – 2026-11-25
+
+Board trouble? Fix it without leaving the game.
+
+- **Board panel in the playroom:** tap the board chip (top right) to see what the Autodarts board is doing – live camera picture, detection running or stopped, calibration per camera, darts currently in the board.
+- **One-tap fixes:** *Reset* (stuck takeout, wrongly detected darts), *Calibrate*, *Start/Stop detection* and *Restart cameras* right from the playroom – on the box's screen or your phone. No more detour via the hub and the board manager.
+- **Warnings on the chip:** the chip turns red when the board is not calibrated or hangs in takeout for more than 20 seconds ("Takeout stuck? Tap").
+- Switching automatic detection on/off for a device moved into the same panel.
+
 ## v1.2.0 – 2026-11-25
 
 Jetzt auch auf Deutsch – and a caller with some energy.
