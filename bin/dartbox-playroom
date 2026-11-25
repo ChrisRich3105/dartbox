@@ -34,6 +34,7 @@ Data lives in /var/lib/dartbox/playroom (override with DARTBOX_PLAYROOM_DATA).
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -138,22 +139,59 @@ class PiperVoice:
         return None
 
 
-VOICES = {}
+VOICES = {}                                   # voice name -> PiperVoice (one process each, started on first use)
+VOICE_NAME_RE = re.compile(r"^([a-z]{2})_[A-Z]{2}-[A-Za-z0-9_]+-(x_low|low|medium|high)$")
 
 
-def voice_for(lang):
+def installed_voices():
+    """All Piper voices in VOICES_DIR: [{id, lang, label, quality, styles, default}]."""
     cfg = load_config()
-    name = cfg.get(f"CALLER_VOICE_{lang.upper()}", DEFAULT_VOICES.get(lang, ""))
+    defaults = {lang: cfg.get(f"CALLER_VOICE_{lang.upper()}", DEFAULT_VOICES.get(lang, "")) for lang in DEFAULT_VOICES}
+    out = []
+    if not os.path.isfile(PIPER):
+        return out
+    try:
+        files = sorted(os.listdir(VOICES_DIR))
+    except OSError:
+        return out
+    for f in files:
+        name = f[:-5] if f.endswith(".onnx") else None
+        m = VOICE_NAME_RE.match(name or "")
+        if not m or not os.path.isfile(os.path.join(VOICES_DIR, f + ".json")):
+            continue
+        lang, quality = m.group(1), m.group(2)
+        speaker = name.split("-")[1]
+        try:
+            with open(os.path.join(VOICES_DIR, f + ".json"), encoding="utf-8") as fh:
+                speakers = json.load(fh).get("speaker_id_map") or {}
+        except (OSError, ValueError):
+            speakers = {}
+        out.append({
+            "id": name, "lang": lang, "quality": quality,
+            "label": " ".join(w.capitalize() for w in speaker.split("_")),
+            "styles": any(n in speakers for n in STYLE_SPEAKERS["hype"]),   # has an excited speaking style
+            "default": defaults.get(lang) == name,
+        })
+    return out
+
+
+def voice_for(lang, name=None):
+    """The Piper voice for a language: the requested one if installed, else the box default."""
     if not name:
+        name = load_config().get(f"CALLER_VOICE_{lang.upper()}", DEFAULT_VOICES.get(lang, ""))
+    if not name or not VOICE_NAME_RE.match(name) or not name.startswith(lang + "_"):
         return None
-    v = VOICES.get(lang)
-    if not v or v.name != name:
-        v = VOICES[lang] = PiperVoice(lang, name)
+    v = VOICES.get(name)
+    if not v:
+        v = VOICES[name] = PiperVoice(lang, name)
     return v if v.available() else None
 
 
 def voices_available():
-    return {lang: voice_for(lang) is not None for lang in DEFAULT_VOICES}
+    lst = installed_voices()
+    out = {lang: any(v["lang"] == lang for v in lst) for lang in DEFAULT_VOICES}
+    out["list"] = lst
+    return out
 
 
 def clean_text(t):
@@ -427,7 +465,10 @@ class Handler(BaseHTTPRequestHandler):
             lang = (qs.get("lang") or ["en"])[0]
             style = (qs.get("style") or ["calm"])[0]
             text = clean_text((qs.get("text") or [""])[0])
-            v = voice_for(lang) if lang in DEFAULT_VOICES else None
+            want = (qs.get("voice") or [""])[0]
+            v = voice_for(lang, want) if lang in DEFAULT_VOICES else None
+            if not v and want:
+                v = voice_for(lang)                     # chosen voice was removed -> box default
             if not v or not text:
                 return self.send(404, {"error": "no natural voice for this language"})
             path = v.synth(text, "hype" if style == "hype" else "calm")

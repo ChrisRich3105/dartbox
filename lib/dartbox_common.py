@@ -30,6 +30,7 @@ DEFAULTS = {
     "LANGUAGE": "auto",
     "CALLER_VOICE_DE": "de_DE-thorsten_emotional-medium",
     "CALLER_VOICE_EN": "en_GB-alan-medium",
+    "CALLER_VOICES_EXTRA": "",
 }
 
 

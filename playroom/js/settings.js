@@ -10,8 +10,7 @@ export const DEFAULTS = {
   dartSounds: true,     // a "thud" for every dart
   eventSounds: true,    // bust, 180, checkout, win, target hit
   caller: false,        // spoken caller
-  naturalVoice: true,   // use the box's natural voice (Piper) when installed
-  voice: '',            // speechSynthesis voice name ('' = automatic English)
+  callerVoice: {},      // per language: 'auto' | 'box:<piper voice>' | 'dev:<speechSynthesis voice name>'
   effects: true,        // big on-screen celebrations
   confetti: true,       // confetti for 180 / wins
   animations: !reducedMotion,  // animated scores and dart markers
@@ -29,9 +28,10 @@ export const DESCRIPTIONS = [
     ['volume', 'Volume', null, 'range'],
     ['dartSounds', 'Dart sounds', 'A short sound for every dart – higher for doubles and trebles.'],
     ['eventSounds', 'Event sounds', 'Bust, target hit, 180, checkout, leg and match won.'],
-    ['caller', 'Caller (voice)', 'Calls scores and "you require …" like on TV. Needs a voice on this device.'],
-    ['naturalVoice', 'Natural voice (on the box)', null, 'natural'],
-    ['voice', 'Voice', null, 'voice'],
+  ]],
+  ['Caller', [
+    ['caller', 'Caller', 'Announces scores, what\'s left and checkouts – like on TV.'],
+    ['callerVoice', 'Voice', null, 'callervoice'],
   ]],
   ['Visuals', [
     ['effects', 'Celebrations', 'Big on-screen messages for 180, high scores, checkouts, busts and wins.'],
@@ -50,6 +50,12 @@ export function getSettings() {
   if (!cache) {
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { /* private mode */ }
+    // up to 1.3: separate "natural voice" switch + one device voice name
+    if (!saved.callerVoice && (saved.voice || saved.naturalVoice === false)) {
+      const v = saved.naturalVoice === false && saved.voice ? 'dev:' + saved.voice : 'auto';
+      saved.callerVoice = { de: v, en: v };
+    }
+    delete saved.voice; delete saved.naturalVoice;
     cache = { ...DEFAULTS, ...saved };
   }
   return cache;

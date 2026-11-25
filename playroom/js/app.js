@@ -4,7 +4,7 @@ import { TRAININGS } from './training.js';
 import { label, score } from './darts.js';
 import { playerStats } from './stats.js';
 import { getSettings, setSetting, resetSettings, DESCRIPTIONS, onSettings } from './settings.js';
-import { play, call, say, voices, unlockAudio, loadServerVoices, hasNaturalVoice } from './sound.js';
+import { play, call, unlockAudio, loadServerVoices, hasNaturalVoice, boxVoices, deviceVoices, resolveVoice, sayUrl } from './sound.js';
 import { t, tr, setLang, getLang, resolveLang, LANG_CHOICES } from './i18n.js';
 import { callerParts, prewarmList } from './caller.js';
 import { celebrate, tween } from './fx.js';
@@ -876,24 +876,15 @@ async function renderStats(pid) {
 // ------------------------------------------------------------------ settings (per device)
 function renderSettings() {
   const st = getSettings();
-  const vs = voices();
   const row = ([key, labelText, desc, kind]) => {
     if (kind === 'lang') {
       return `<div class="setrow"><div><b>${t(labelText)}</b><div class="mut">${t(desc)}</div></div>
         <select data-lang="1">${LANG_CHOICES.map(([v, l]) => `<option value="${v}" ${st.lang === v ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></div>`;
     }
-    if (kind === 'natural') {
-      const ok = hasNaturalVoice();
-      return `<label class="setrow"><div><b>${t(labelText)}</b><div class="mut">${ok ? t('Using the natural voice of the box.') : t('Not installed on this box – the device\'s own voice is used.')}</div></div>
-        <input type="checkbox" class="switch" data-key="${key}" ${st[key] ? 'checked' : ''} ${ok ? '' : 'disabled'}></label>`;
-    }
+    if (kind === 'callervoice') return callerVoiceRow(st);
     if (kind === 'range') {
       return `<div class="setrow"><div><b>${t(labelText)}</b></div>
         <input type="range" min="0" max="1" step="0.05" value="${st[key]}" data-range="${key}"></div>`;
-    }
-    if (kind === 'voice') {
-      return `<div class="setrow"><div><b>${t(labelText)}</b><div class="mut">${vs.length ? t('English voices are preferred automatically.') : t('No voices found on this device – the caller stays silent.')}</div></div>
-        <select data-voice="1" ${vs.length ? '' : 'disabled'}><option value="">${t('Automatic')}</option>${vs.map((v) => `<option ${v.name === st.voice ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select></div>`;
     }
     return `<label class="setrow"><div><b>${t(labelText)}</b><div class="mut">${esc(t(desc))}</div></div>
       <input type="checkbox" class="switch" data-key="${key}" ${st[key] ? 'checked' : ''}></label>`;
@@ -901,26 +892,58 @@ function renderSettings() {
   $app.innerHTML = `<h1>${t('Settings')}</h1>
     <p class="mut" style="margin-top:-8px">${t('Saved on this device only – the box\'s screen and your phone can be set up differently.')}</p>
     ${DESCRIPTIONS.map(([title, rows]) => `<div class="card"><h3>${t(title)}</h3>${rows.map(row).join('')}</div>`).join('')}
-    <div class="row"><button id="t-sound">${t('▶ Test sounds')}</button><button id="t-caller">${t('▶ Test caller')}</button><button id="t-fx">${t('▶ Test effects')}</button>
+    <div class="row"><button id="t-sound">${t('▶ Test sounds')}</button><button id="t-fx">${t('▶ Test effects')}</button>
       <button id="t-reset" class="ghost">${t('Reset to defaults')}</button></div>`;
   $app.querySelectorAll('[data-key]').forEach((el) => el.onchange = () => { setSetting(el.dataset.key, el.checked); unlockAudio(); });
   $app.querySelectorAll('[data-range]').forEach((el) => el.oninput = () => setSetting(el.dataset.range, +el.value));
   const lsel = $app.querySelector('[data-lang]');
   if (lsel) lsel.onchange = () => { setSetting('lang', lsel.value); applyLang(); renderSettings(); };
   const vsel = $app.querySelector('[data-voice]');
-  if (vsel) vsel.onchange = () => setSetting('voice', vsel.value);
-  document.getElementById('t-sound').onclick = () => { unlockAudio(); play('dart', { n: 20, m: 3 }); setTimeout(() => play('hit'), 400); setTimeout(() => play('oneEighty'), 900); };
-  document.getElementById('t-caller').onclick = () => {
-    const was = getSettings().caller;
-    if (!was) setSetting('caller', true);
-    unlockAudio();
-    call(callerParts('oneEighty'));
-    if (!was) setSetting('caller', false);
+  if (vsel) vsel.onchange = () => {
+    setSetting('callerVoice', { ...(getSettings().callerVoice || {}), [getLang()]: vsel.value });
+    renderSettings();
+    testVoice();
   };
+  const vt = document.getElementById('t-voice');
+  if (vt) vt.onclick = () => testVoice();
+  document.getElementById('t-sound').onclick = () => { unlockAudio(); play('dart', { n: 20, m: 3 }); setTimeout(() => play('hit'), 400); setTimeout(() => play('oneEighty'), 900); };
   document.getElementById('t-fx').onclick = () => { if (!celebrate('180', 'great', { confetti: true, sub: t('ONE HUNDRED AND EIGHTY') })) toast(t('Celebrations are switched off'), 'info'); };
   document.getElementById('t-reset').onclick = () => { resetSettings(); renderSettings(); };
 }
 if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = () => { if (page === 'settings') renderSettings(); };
+
+// One select for the caller voice: the box's natural voices first, then this device's own voices.
+function callerVoiceRow(st) {
+  const lang = getLang();
+  const choice = (st.callerVoice || {})[lang] || 'auto';
+  const box = boxVoices(lang), dev = deviceVoices(lang), cur = resolveVoice(lang);
+  const q = { x_low: t('basic quality'), low: t('basic quality'), medium: '', high: t('high quality') };
+  const boxLabel = (v) => [v.label, v.styles ? t('excited for 180s & checkouts') : '', q[v.quality] || '', v.default ? t('box default') : '']
+    .filter(Boolean).join(' · ');
+  const opt = (val, text) => `<option value="${esc(val)}" ${choice === val ? 'selected' : ''}>${esc(text)}</option>`;
+  const autoText = cur.kind === 'box' ? t('Automatic – {v}', { v: cur.label }) : cur.kind === 'dev' ? t('Automatic – {v}', { v: cur.name }) : t('Automatic');
+  const help = cur.kind === 'box'
+    ? t('Natural voice: generated on the box, sounds human, works on every device that opens the playroom.')
+    : cur.kind === 'dev'
+      ? (box.length ? t('Voice of this device (browser/operating system) – usually sounds more robotic than the box voices.')
+        : t('No natural voice installed on the box for this language – the voice of this device is used.'))
+      : t('No voice available for this language on this device.');
+  return `<div class="setrow voicerow"><div><b>${t('Voice')}</b><div class="mut">${help}</div></div>
+    <div class="voicepick"><select data-voice="1">
+      ${opt('auto', autoText)}
+      ${box.length ? `<optgroup label="${esc(t('Natural voices (box)'))}">${box.map((v) => opt('box:' + v.id, boxLabel(v))).join('')}</optgroup>` : ''}
+      ${dev.length ? `<optgroup label="${esc(t('Voices of this device'))}">${dev.map((v) => opt('dev:' + v.name, v.name)).join('')}</optgroup>` : ''}
+    </select><button id="t-voice" ${cur.kind === 'none' ? 'disabled' : ''}>${t('▶ Listen')}</button></div></div>`;
+}
+
+// Plays a short sample with the selected voice – also when the caller is switched off.
+function testVoice() {
+  unlockAudio();
+  const names = { de: 'Anna', en: 'Anna' };
+  const samples = [callerParts('oneEighty'), callerParts('require', names[getLang()] || 'Anna', 32)];
+  call(samples[0], { force: true });
+  call(samples[1], { force: true, interrupt: false });
+}
 // browsers only allow sound after the first tap / key press
 ['pointerdown', 'keydown'].forEach((ev) => addEventListener(ev, unlockAudio, { passive: true }));
 
@@ -944,7 +967,7 @@ async function prewarmVoice() {
   try { if (localStorage.getItem(key)) return; } catch { /* ignore */ }
   for (const p of prewarmList(lang)) {
     if (getLang() !== lang) return;
-    try { await fetch(`/api/say?lang=${lang}&style=${p.s}&text=${encodeURIComponent(p.t)}`, { method: 'HEAD' }); } catch { return; }
+    try { await fetch(sayUrl(lang, p.s, p.t), { method: 'HEAD' }); } catch { return; }
   }
   try { localStorage.setItem(key, '1'); } catch { /* ignore */ }
 }
@@ -953,7 +976,7 @@ function prefetchNames() {
   if (!game || !getSettings().caller || !hasNaturalVoice()) return;
   const lang = getLang();
   game.s.players.forEach((p) => ['calm', 'hype'].forEach((s) =>
-    fetch(`/api/say?lang=${lang}&style=${s}&text=${encodeURIComponent(p.name)}`, { method: 'HEAD' }).catch(() => {})));
+    fetch(sayUrl(lang, s, p.name), { method: 'HEAD' }).catch(() => {})));
 }
 
 // ------------------------------------------------------------------ keyboard (kiosk with a keyboard)

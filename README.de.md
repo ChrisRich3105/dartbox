@@ -12,7 +12,7 @@ Die ausführliche Anleitung (englisch) steht in der [README.md](README.md).
 - **Hub** unter `http://dartbox.local/` – Autodarts, Board Manager, Playroom, WLAN, Updates.
 - **Lokaler Playroom** unter `http://dartbox.local:8081/` – X01, Cricket, Around the Clock, Shanghai, Killer, Halve-It, Count Up, Baseball, Gotcha und sechs Trainingsmodi mit Statistik. Ohne Internet und ohne Autodarts-Abo.
 - **Board-Panel im Playroom:** Board-Chip oben rechts antippen – Live-Kamerabild, Status, Kalibrierung je Kamera und direkt **Zurücksetzen**, **Kalibrieren**, Erkennung starten/stoppen, Kameras neu starten.
-- **Caller mit natürlicher Stimme** („Hundertachtzig!“, „Anna, du brauchst 32.“), Jubel-Effekte, Töne, Dartboard-Ansicht – alles einzeln abschaltbar.
+- **Caller mit natürlicher Stimme** („Hundertachtzig!“, „Anna, du brauchst 32.“), Jubel-Effekte, Töne, Dartboard-Ansicht – alles einzeln abschaltbar. Stimme wählen und Probe hören: ⚙ Einstellungen → Caller. Weitere Stimmen: `CALLER_VOICES_EXTRA` in `/etc/dartbox/dartbox.conf`, dann Installer erneut ausführen.
 - **Online-Updates** mit Versionshinweisen, Selbsttest und automatischem Zurückrollen.
 
 ## Installation

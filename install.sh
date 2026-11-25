@@ -248,8 +248,9 @@ if [ "$WITH_VOICE" = 1 ]; then
             fi
         fi
     fi
-    for V in "${CALLER_VOICE_DE:-de_DE-thorsten_emotional-medium}" "${CALLER_VOICE_EN:-en_GB-alan-medium}"; do
-        [ -n "$V" ] || continue
+    # shellcheck disable=SC2086 # CALLER_VOICES_EXTRA is a space separated list
+    for V in "${CALLER_VOICE_DE:-de_DE-thorsten_emotional-medium}" "${CALLER_VOICE_EN:-en_GB-alan-medium}" ${CALLER_VOICES_EXTRA:-}; do
+        [[ "$V" =~ ^[a-z]{2}_[A-Z]{2}-[A-Za-z0-9_]+-(x_low|low|medium|high)$ ]] || { [ -n "$V" ] && echo "    (skipping unknown voice name '$V')"; continue; }
         [ -s "$VOICE_DIR/$V.onnx" ] && [ -s "$VOICE_DIR/$V.onnx.json" ] && continue
         # name = <lang>_<REGION>-<voice>-<quality>  ->  <lang>/<lang>_<REGION>/<voice>/<quality>/<name>.onnx
         CODE=${V%%-*}; REST=${V#*-}; QUAL=${REST##*-}; VNAME=${REST%-*}; LANG2=${CODE%%_*}

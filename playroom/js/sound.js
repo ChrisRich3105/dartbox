@@ -99,34 +99,59 @@ export function play(name, arg) {
 // 1st choice: the box's natural neural voice (Piper, served by the playroom: /api/say),
 //             played through an "arena" chain – compressor, a bit louder/faster when hyped, hall reverb.
 // fallback:   the browser's own speech synthesis.
-let serverVoices = {};
+let serverVoices = { list: [] };
 export async function loadServerVoices() {
   try { serverVoices = await (await fetch('/api/voices', { cache: 'no-store' })).json(); } catch { serverVoices = {}; }
+  if (!Array.isArray(serverVoices.list)) serverVoices.list = [];
   return serverVoices;
 }
-export const hasNaturalVoice = (lang = getLang()) => !!serverVoices[lang];
 
-export function voices() {
-  return 'speechSynthesis' in window ? speechSynthesis.getVoices() : [];
+/** natural (Piper) voices installed on the box for a language */
+export const boxVoices = (lang = getLang()) => serverVoices.list.filter((v) => v.lang === lang);
+
+/** this device's own (speechSynthesis) voices for a language */
+export function deviceVoices(lang = getLang()) {
+  const all = 'speechSynthesis' in window ? speechSynthesis.getVoices() : [];
+  return all.filter((v) => v.lang.toLowerCase().replace('_', '-').startsWith(lang));
 }
 
-function pickVoice() {
-  const st = getSettings(), all = voices(), lang = getLang();
-  const re = lang === 'de' ? /^de/i : /^en[-_]GB/i;
-  const chosen = all.find((v) => v.name === st.voice);
-  return (chosen && chosen.lang.toLowerCase().startsWith(lang) ? chosen : null)
-    || all.find((v) => re.test(v.lang))
-    || all.find((v) => v.lang.toLowerCase().startsWith(lang))
-    || chosen || all[0] || null;
+/**
+ * The voice the caller uses for a language: {kind:'box', id, label} or {kind:'dev', name} or {kind:'none'}.
+ * 'auto' = the box's default natural voice, else the best voice of this device.
+ */
+export function resolveVoice(lang = getLang(), choice = (getSettings().callerVoice || {})[lang] || 'auto') {
+  const box = boxVoices(lang);
+  if (choice.startsWith('box:')) {
+    const v = box.find((x) => x.id === choice.slice(4));
+    if (v) return { kind: 'box', id: v.id, label: v.label };
+  }
+  if (choice.startsWith('dev:')) {
+    const v = deviceVoices(lang).find((x) => x.name === choice.slice(4));
+    if (v) return { kind: 'dev', name: v.name };
+  }
+  const def = box.find((x) => x.default) || box[0];
+  if (def) return { kind: 'box', id: def.id, label: def.label };
+  const dev = deviceVoices(lang);
+  const best = dev.find((v) => (lang === 'en' ? /en[-_]GB/i.test(v.lang) : true) && !/espeak/i.test(v.name)) || dev[0];
+  return best ? { kind: 'dev', name: best.name } : { kind: 'none' };
 }
 
-function browserSay(text, interrupt) {
+/** true when calls in this language come from the box (worth pre-rendering) */
+export const hasNaturalVoice = (lang = getLang()) => resolveVoice(lang).kind === 'box';
+
+/** URL of a rendered caller phrase (also used for pre-rendering with HEAD) */
+export function sayUrl(lang, style, text) {
+  const v = resolveVoice(lang);
+  return `/api/say?lang=${lang}&style=${style}&text=${encodeURIComponent(text)}${v.kind === 'box' ? '&voice=' + encodeURIComponent(v.id) : ''}`;
+}
+
+function browserSay(text, interrupt, name) {
   if (!('speechSynthesis' in window)) return;
   const st = getSettings();
   try {
     if (interrupt) speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    const v = pickVoice();
+    const v = speechSynthesis.getVoices().find((x) => x.name === name);
     if (v) { u.voice = v; u.lang = v.lang; } else u.lang = getLang() === 'de' ? 'de-DE' : 'en-GB';
     u.rate = 1.05; u.pitch = 1.05;
     u.volume = Math.max(0, Math.min(1, +st.volume));
@@ -158,9 +183,9 @@ function bus() {
 }
 
 function clip(lang, part) {
-  const key = `${lang}|${part.s}|${part.t}`;
+  const url = sayUrl(lang, part.s, part.t);
+  const key = url;
   if (!clipCache.has(key)) {
-    const url = `/api/say?lang=${lang}&style=${part.s}&text=${encodeURIComponent(part.t)}`;
     clipCache.set(key, fetch(url).then((r) => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
       .then((b) => ctx.decodeAudioData(b)).catch((e) => { clipCache.delete(key); throw e; }));
     if (clipCache.size > 300) clipCache.delete(clipCache.keys().next().value);
@@ -183,12 +208,13 @@ function playClip(buf, style) {
 }
 
 /** Speak caller parts [{t, s}]; interrupt = drop whatever is still queued. */
-export function call(parts, { interrupt = true } = {}) {
+export function call(parts, { interrupt = true, force = false } = {}) {
   const st = getSettings();
-  if (!st.sound || !st.caller || !parts || !parts.length) return;
+  if (!parts || !parts.length || (!force && (!st.sound || !st.caller))) return;
   const lang = getLang();
-  if (!st.naturalVoice || !hasNaturalVoice(lang) || !audio()) {
-    browserSay(parts.map((p) => p.t).join(' '), interrupt);
+  const v = resolveVoice(lang);
+  if (v.kind !== 'box' || !audio()) {
+    if (v.kind === 'dev') browserSay(parts.map((p) => p.t).join(' '), interrupt, v.name);
     return;
   }
   if (interrupt) {

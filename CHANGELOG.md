@@ -7,11 +7,13 @@ Format: `## vX.Y.Z – YYYY-MM-DD`, newest first.
 
 ## v1.3.1 – 2026-11-25
 
-Cleaner charts.
+Cleaner charts and an easier caller setup.
 
 - **Statistics and results charts redrawn:** real axes with round numbers, dates under the trend, no more stretched text or squashed dots, and a scale that no longer turns a small change into a cliff.
 - **Tap or hover a chart** to read the exact value of every player at that point; *Show values* lists them as a table.
 - Player colours are now a colour-blind-checked set.
+- **Choosing the caller voice is simpler:** one *Caller* switch and one *Voice* list – the box's natural voices first, then the device's own voices – with an explanation of what you picked and a **▶ Listen** button that plays a sample (also while the caller is off). The old "Natural voice" switch is gone; your choice carries over.
+- **More voices:** list extra Piper voices in `CALLER_VOICES_EXTRA` (`/etc/dartbox/dartbox.conf`, suggestions included) and re-run the installer – they show up in the list on every device.
 
 ## v1.3.0 – 2026-11-25
 

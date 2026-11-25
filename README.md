@@ -190,11 +190,11 @@ Everything can be switched off in **⚙ Settings** (per device, so the box's scr
 | Sounds, volume | master switch for everything audible |
 | Dart sounds / event sounds | per dart, or only bust / 180 / checkout / win / target hit |
 | Language | Deutsch / English / automatic (browser language, or the box default `LANGUAGE`) |
-| Caller, natural voice, voice | spoken scores; on the box a natural neural voice (see below), elsewhere the device's own voice |
+| Caller · Voice | spoken scores on/off; **Voice** picks a natural voice of the box or one of this device's own voices, **▶ Listen** plays a sample (also while the caller is off) |
 | Celebrations, confetti, animations | big messages, confetti, counting scores; animations follow the system's "reduce motion" setting |
 | Dartboard view, on phones, show targets | the board panel (wide screens by default) and the target highlights |
 
-**The caller** – on the box, Dartbox speaks with a natural neural voice ([Piper](https://github.com/rhasspy/piper), runs offline, no cloud): German "Thorsten" (emotional variant – an excited style for 180s, checkouts and wins) and British "Alan" in English. Big moments are louder, a touch faster and get some arena reverb; ton-forty-plus scores sometimes get praise ("Great darts!" / "Klasse Darts!"). Phrases are rendered once in the background and cached, so calls are instant. Phones and PCs use their own system voice. Other voices: pick one from [piper-voices](https://huggingface.co/rhasspy/piper-voices), set `CALLER_VOICE_DE` / `CALLER_VOICE_EN` and re-run the installer.
+**The caller** – on the box, Dartbox speaks with a natural neural voice ([Piper](https://github.com/rhasspy/piper), runs offline, no cloud): German "Thorsten" (emotional variant – an excited style for 180s, checkouts and wins) and British "Alan" in English. Big moments are louder, a touch faster and get some arena reverb; ton-forty-plus scores sometimes get praise ("Great darts!" / "Klasse Darts!"). Phrases are rendered once in the background and cached, so calls are instant. The natural voices are rendered on the box, so phones and PCs that open the playroom get them too. Each device chooses its voice in ⚙ Settings → Caller (*Automatic* = the box default). More voices to choose from: add their names to `CALLER_VOICES_EXTRA` in `/etc/dartbox/dartbox.conf` (suggestions are listed there, any voice from [piper-voices](https://huggingface.co/rhasspy/piper-voices) works) and re-run the installer; `CALLER_VOICE_DE` / `CALLER_VOICE_EN` set the default.
 
 **Statistics** – per player: an all-time hit map ("where your darts land"), X01 average, first-9 average, checkout %, highest checkout, best leg, 180s / 140+ / 100+, Cricket MPR, Bob's 27, doubles heat map, checkout and target practice rates, trend charts, recent sessions (wrong records can be deleted).
 
@@ -264,7 +264,8 @@ Everything lives in **`/etc/dartbox/dartbox.conf`**. After a change: `sudo syste
 | `PLAYROOM_URL` | `http://localhost:8081/` | empty = hide the playroom |
 | `POWER_BUTTON_ENABLED` | `1` | `0` = normal power button behaviour |
 | `LANGUAGE` | `auto` | default language of hub and playroom: `auto` (browser), `de`, `en`; each device can override it in ⚙ Settings |
-| `CALLER_VOICE_DE` / `CALLER_VOICE_EN` | `de_DE-thorsten_emotional-medium` / `en_GB-alan-medium` | natural caller voices (Piper); empty = device voice |
+| `CALLER_VOICE_DE` / `CALLER_VOICE_EN` | `de_DE-thorsten_emotional-medium` / `en_GB-alan-medium` | default natural caller voice per language (Piper); empty = device voice |
+| `CALLER_VOICES_EXTRA` | *(empty)* | more Piper voices to download, space separated – selectable per device in the playroom |
 | `UPDATE_CHECK` | `1` | automatic update checks |
 | `UPDATE_CHANNEL` | `stable` | `beta` = also pre-releases |
 | `UPDATE_REPO` | from `release.conf` | install updates from a fork (`owner/name`) |
