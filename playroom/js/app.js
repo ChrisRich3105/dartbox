@@ -173,7 +173,7 @@ function inputDart(d) {
 }
 
 // ------------------------------------------------------------------ Autodarts board input
-const board = { on: store.get('board', isKiosk), seen: null, key: null, st: null, health: null, takeoutSince: 0 };
+const board = { on: store.get('board', true), seen: null, key: null, st: null, health: null, takeoutSince: 0 };
 const TAKEOUT_STUCK_MS = 20000;
 const isTakeout = (st) => !!(st && st.status && st.status.startsWith('takeout'));
 const takeoutStuck = () => board.takeoutSince > 0 && Date.now() - board.takeoutSince > TAKEOUT_STUCK_MS;

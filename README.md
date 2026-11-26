@@ -201,7 +201,7 @@ Everything can be switched off in **⚙ Settings** (per device, so the box's scr
 **Entering darts**
 
 - **Automatic:** with *Board on* (top right; on by default on the box's screen) darts detected by the Autodarts board are entered by themselves; pulling the darts out = next player.
-- **Board panel:** tap the board chip (top right) for the board's status – live camera picture, detection, calibration per camera – and one-tap **Reset** (stuck takeout), **Calibrate**, **Start/Stop detection** and **Restart cameras**. The chip turns red when the board isn't calibrated or hangs in takeout for more than 20 s. Automatic detection is switched on/off per device in the same panel.
+- **Board panel:** tap the board chip (top right) for the board's status – live camera picture, detection, calibration per camera – and one-tap **Reset** (stuck takeout), **Calibrate**, **Start/Stop detection** and **Restart cameras**. The chip turns red when the board isn't calibrated or hangs in takeout for more than 20 s. Automatic detection is **on by default on every device** (the board belongs to the box); switch it off per device in the same panel. If a game is already running on another screen, you can take it over or join as remote keypad.
 - **Keypad:** tap *Double* / *Treble*, then the number; *Next* = next player (missing darts count as misses). Tap a dart in the visit bar to correct it – also fixes wrong detections.
 - **Phone as remote keypad:** open the playroom on your phone while a game runs on the screen → *Remote keypad*.
 - **Keyboard:** Enter = next, Backspace = undo, D / T = double / treble, M = miss.

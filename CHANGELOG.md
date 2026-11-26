@@ -5,6 +5,12 @@ All notable changes. The section of a version is used as its GitHub release note
 
 Format: `## vX.Y.Z – YYYY-MM-DD`, newest first.
 
+## v1.3.3 – 2026-11-26
+
+The board is used automatically on every device.
+
+- **Automatic detection is now on by default everywhere**, not only on the box's own screen. Open the playroom on a phone or PC and the darts from the board are picked up right away – no need to switch it on first. If a game is already running on another screen, you can still take it over or join as remote keypad. Devices where you switched it off (or on) yourself keep their choice.
+
 ## v1.3.2 – 2026-11-26
 
 - **Readable text and symbols on every screen:** Dartbox now ships its own font and icons, so the hub and playroom look the same on small kiosk devices (e.g. Siemens iE250), PCs and phones – no more odd lettering or missing symbols.
