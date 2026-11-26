@@ -173,7 +173,7 @@ function inputDart(d) {
 }
 
 // ------------------------------------------------------------------ Autodarts board input
-const board = { on: store.get('board', true), seen: null, key: null, st: null, health: null, takeoutSince: 0 };
+const board = { on: store.get('board', true), seen: null, key: null, st: null, health: null, takeoutSince: 0, gap: false };
 const TAKEOUT_STUCK_MS = 20000;
 const isTakeout = (st) => !!(st && st.status && st.status.startsWith('takeout'));
 const takeoutStuck = () => board.takeoutSince > 0 && Date.now() - board.takeoutSince > TAKEOUT_STUCK_MS;
@@ -360,9 +360,14 @@ async function pollBoard() {
     try { st = await api.get('board'); } catch { st = { ok: false, throws: [] }; }
     board.st = st;
     if (isTakeout(st)) { if (!board.takeoutSince) board.takeoutSince = Date.now(); } else board.takeoutSince = 0;
-    if (!st.ok || !game) { board.seen = null; return; }
+    if (!game) { board.seen = null; return; }
+    if (!st.ok) { board.gap = true; return; }                          // keep the count: darts thrown meanwhile still count
     const t = st.throws || [];
-    if (board.seen === null) { board.seen = t.length; return; }      // ignore darts already in the board
+    if (board.seen === null) { board.seen = t.length; board.gap = false; return; }      // ignore darts already in the board
+    if (board.gap) {
+      board.gap = false;
+      if (t.length < board.seen) { board.seen = t.length; return; }  // emptied or restarted meanwhile: just resync
+    }
     if (t.length < board.seen) {                                      // darts pulled -> takeout finished
       if (board.key && board.key === keyOf()) act(() => game.next());
       board.key = null;
@@ -680,7 +685,7 @@ function renderResults() {
   const order = s.ranking || [...Array(game.n).keys()];
   $app.innerHTML = `
     <div class="card" style="max-width:760px;margin:0 auto">
-      <h1>🏆 ${esc(G.training ? t('Session complete') : t('{name} wins!', { name: game.name(s.winner) }))}</h1>
+      <h1>${G.training ? '🏆 ' + esc(t('Session complete')) : s.winner === null ? esc(t('Draw')) : '🏆 ' + esc(t('{name} wins!', { name: game.name(s.winner) }))}</h1>
       <p class="mut">${esc(tr(G.title))} · ${esc(tr(v.info))}</p>
       <ul class="rank">${order.map((i, k) => {
         const c = v.cols[i];

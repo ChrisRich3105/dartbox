@@ -203,6 +203,14 @@ export function run() {
   g = new Baseball({ extra: true }, P('A', 'B'));
   for (let k = 0; k < 18; k++) g.next();         // 0:0 after 9 -> extra innings
   eq('baseball extra inning', [g.s.matchOver, g.s.round], [false, 10]);
+  g = new Baseball({ extra: false }, P('A', 'B'));
+  for (let k = 0; k < 18; k++) g.next();         // 0:0 after 9, no extra innings -> draw
+  eq('baseball draw', [g.s.matchOver, g.s.winner, g.s.legsWon], [true, null, [0, 0]]);
+  eq('baseball draw ranking', g.s.ranking.length, 2);
+  g = new Baseball({ extra: false }, P('A', 'B'));
+  throwAll(g, 'T1 |');
+  for (let k = 0; k < 17; k++) g.next();
+  eq('baseball no draw when ahead', [g.s.matchOver, g.s.winner], [true, 0]);
   g = new Gotcha({ target: 301 }, P('A', 'B'));
   throwAll(g, 'T20 |  T20 |');
   eq('gotcha reset opponent', g.g.score, [0, 60]);

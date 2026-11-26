@@ -30,6 +30,7 @@ from dartbox_common import (  # noqa: E402
 )
 
 REQ_DIR = os.path.join(RUN_DIR, "requests")
+PENDING_CON = "dartbox-pending"      # new WiFi profile while it is being tested
 
 
 class NetMgr:
@@ -139,9 +140,21 @@ class NetMgr:
         self.stop_hotspot()
         self.mode = "connecting"
         self.write_status()
-        run(["nmcli", "connection", "delete", ssid])
+        # Build the new profile under a temporary name: a wrong password must not destroy a working
+        # saved network, and the SSID must never pick which (non-WiFi) profile gets deleted.
+        types = {}
+        _, out, _ = run(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"])
+        for line in out.splitlines():
+            parts = nm_split(line)
+            if len(parts) >= 2:
+                types[parts[0]] = parts[1]
+        name = ssid
+        if (name.startswith("-") or name in (HOTSPOT_CON, PENDING_CON)
+                or types.get(name, "802-11-wireless") != "802-11-wireless"):
+            name = "dartbox-wifi-" + ssid
+        run(["nmcli", "connection", "delete", PENDING_CON])
         args = ["nmcli", "connection", "add", "type", "wifi", "ifname", self.iface,
-                "con-name", ssid, "ssid", ssid, "connection.autoconnect", "yes",
+                "con-name", PENDING_CON, "ssid", ssid, "connection.autoconnect", "yes",
                 "802-11-wireless.powersave", "2"]          # 2 = disable powersave
         if hidden:
             args += ["802-11-wireless.hidden", "yes"]
@@ -151,9 +164,14 @@ class NetMgr:
         rc, _, err = run(args)
         if rc == 0:
             t = self.cfg["RETRY_TIMEOUT"]
-            rc, _, err = run(["nmcli", "--wait", t, "connection", "up", ssid], timeout=int(t) + 10)
+            rc, _, err = run(["nmcli", "--wait", t, "connection", "up", PENDING_CON], timeout=int(t) + 10)
         if rc == 0:
             log("connected to", ssid)
+            if types.get(name) == "802-11-wireless":
+                run(["nmcli", "connection", "delete", name])           # replace the old profile of this network
+            rc, _, err = run(["nmcli", "connection", "modify", PENDING_CON, "connection.id", name])
+            if rc != 0:
+                log("could not rename the new profile:", err.strip())
             remove(FORCE_HOTSPOT)
             self.last_online = time.monotonic()
             return True
@@ -161,7 +179,7 @@ class NetMgr:
         log(msg)
         with open(LAST_ERROR, "w") as f:
             f.write(msg)
-        run(["nmcli", "connection", "delete", ssid])   # don't keep wrong credentials
+        run(["nmcli", "connection", "delete", PENDING_CON])   # don't keep wrong credentials (saved networks stay)
         self.start_hotspot()
         return False
 

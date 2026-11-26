@@ -118,6 +118,17 @@ def previous_version():
         return None
 
 
+def set_previous(v):
+    try:
+        if v:
+            with open(PREVIOUS, "w") as f:
+                f.write(v + "\n")
+        elif os.path.exists(PREVIOUS):
+            os.remove(PREVIOUS)
+    except OSError as e:
+        log(f"previous: {e}")
+
+
 def get_json(url):
     req = urllib.request.Request(url, headers=HEADERS)
     with urllib.request.urlopen(req, timeout=20) as r:
@@ -286,6 +297,7 @@ def apply(tag=None):
         set_status("failed", f"Not a version tag: {tag}")
         return 1
     old = installed_version()
+    prev_before = previous_version()
     try:
         set_status("downloading", f"Downloading {tag} …", target=tag, from_version=old)
         ver, dest = download(info["repo"], tag)
@@ -302,6 +314,7 @@ def apply(tag=None):
         if os.path.isdir(old_dir) and os.path.isfile(os.path.join(old_dir, "install.sh")) and plain(old) != plain(tag):
             set_status("rollingback", f"Update failed ({reason}) – going back to {old} …", target=tag, from_version=old)
             install_from(old_dir)
+            set_previous(prev_before)          # the installer recorded the failed version as "previous"
             if "bk" in locals():
                 restore(bk)
                 run(["systemctl", "try-restart", "dartbox-web", "dartbox-playroom", "dartbox-netmgr"])

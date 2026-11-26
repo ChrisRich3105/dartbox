@@ -5,6 +5,15 @@ All notable changes. The section of a version is used as its GitHub release note
 
 Format: `## vX.Y.Z – YYYY-MM-DD`, newest first.
 
+## v1.3.4 – 2026-11-26
+
+Fairer results and safer WiFi and updates.
+
+- **Equal scores at the round limit are now a draw.** Before, the player who threw first won (for example Baseball without extra innings at 0:0). Now the game ends as *Draw* with no winner in the results or statistics. In a match of several legs, a drawn leg counts for nobody and the next leg starts.
+- **No more lost darts when the board hiccups.** A single failed check of the board during a visit could make the playroom ignore darts already thrown. They now count as soon as the board answers again.
+- **Entering a wrong WiFi password no longer deletes the saved network.** The new login is tested first and only replaces the old one if it works. A network can also no longer overwrite the box's other connections (such as the cable connection) just by having the same name.
+- **Rolling back after a failed update goes to the right version.** Before, the Roll back button could offer the version that had just failed.
+
 ## v1.3.3 – 2026-11-26
 
 The board is used automatically on every device.

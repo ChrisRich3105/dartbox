@@ -49,6 +49,7 @@ const RULES = [
   [/^(.*) – (.*) wins the leg$/, (a, b) => `${tr(a)} – ${b} gewinnt das Leg`],
   [/^(.*) wins the leg$/, (a) => `${a} gewinnt das Leg`],
   [/^(.*) wins!$/, (a) => `${a} gewinnt!`],
+  [/^(.*) – draw$/, (a) => `${tr(a)} – Unentschieden`],
   [/^Checkout (\d+)$/, (a) => `Checkout ${a}`],
   [/^(\d+)\/(\d+) done$/, (a, b) => `${a}/${b} geschafft`],
   [/^(.*) is out!$/, (a) => `${a} ist raus!`],
@@ -242,7 +243,7 @@ const DE = {
   'Darts per finish': 'Darts pro Finish', '3 (one visit)': '3 (eine Aufnahme)', '6 (two visits)': '6 (zwei Aufnahmen)', '9 (three visits)': '9 (drei Aufnahmen)',
 
   // ---- engine / game strings (exact)
-  'Bust!': 'Überworfen!', 'Bust': 'Überworfen', '180!': '180!', 'SHANGHAI!': 'SHANGHAI!', 'Shanghai!': 'Shanghai!', 'Round limit reached': 'Rundenlimit erreicht',
+  'Bust!': 'Überworfen!', 'Bust': 'Überworfen', '180!': '180!', 'SHANGHAI!': 'SHANGHAI!', 'Shanghai!': 'Shanghai!', 'Round limit reached': 'Rundenlimit erreicht', 'Draw': 'Unentschieden',
   'White horse! 9 marks': 'White Horse! 9 Marks', 'Killer – go after the others!': 'Killer – jetzt die anderen!', 'KILLER': 'KILLER',
   'no checkout': 'kein Finish möglich', 'Double or treble in': 'Double oder Triple In', 'Standard': 'Standard', 'Cut-throat': 'Cut-Throat', 'No score': 'Ohne Punkte',
   'double in': 'Double In', 'master in': 'Master In', 'double out': 'Double Out', 'straight out': 'Straight Out', 'master out': 'Master Out',

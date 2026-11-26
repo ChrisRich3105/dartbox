@@ -8,7 +8,7 @@
 //   onVisitEnd(i)          optional: commit the visit (stats, halve-it rule, ...)
 //   onRoundEnd()           optional
 //   maxRounds()            0 = unlimited
-//   decideByRounds()       winner index when the round limit is reached
+//   decideByRounds()       winner index when the round limit is reached (null = draw)
 //   standing(i)            number used to rank players (higher = better)
 //   view()                 scoreboard model for the UI
 //   summary(i)             stats saved to history for player i
@@ -77,7 +77,11 @@ export class Game {
   onVisitEnd() {}
   onRoundEnd() {}
   maxRounds() { return 0; }
-  decideByRounds() { return this.bestBy((i) => this.standing(i)); }
+  decideByRounds() {
+    const best = this.bestBy((i) => this.standing(i));
+    const tied = [...Array(this.n).keys()].some((i) => i !== best && this.standing(i) === this.standing(best));
+    return tied ? null : best;
+  }
   standing() { return 0; }
   summary(i) { return { ...this.s.ps[i] }; }
   hint() { return ''; }
@@ -260,7 +264,8 @@ export class Game {
       this.onRoundEnd();
       const mr = this.maxRounds();
       if (s.legWinner === null && mr && s.round > mr) {
-        this.winLeg(this.decideByRounds(), 'Round limit reached');
+        const w = this.decideByRounds();
+        if (w === null) this.drawLeg('Round limit reached'); else this.winLeg(w, 'Round limit reached');
         return;
       }
     }
@@ -296,6 +301,21 @@ export class Game {
     }
   }
 
+  /** Nobody won the leg (equal at the round limit). legWinner -1 = "over, no winner". */
+  drawLeg(text) {
+    const s = this.s;
+    if (s.legWinner !== null) return;
+    s.legWinner = -1;
+    this.commitVisit();
+    s.visitClosed = true;
+    if (this.legsToWin() <= 1 && this.setsToWin() <= 1) {     // single leg: the match ends in a draw
+      s.matchOver = true;
+      s.winner = null;
+      s.ranking = this.ranking();
+    }
+    this.msg(text ? `${text} – draw` : 'Draw', 'win');
+  }
+
   onLegWon() {}
 
   startNextLeg() {
@@ -322,8 +342,9 @@ export class Game {
   ranking() {
     const idx = [...Array(this.n).keys()];
     const w = this.s.winner;
-    return [w, ...idx.filter((i) => i !== w).sort((a, b) =>
-      (this.s.setsWon[b] - this.s.setsWon[a]) || (this.s.legsWon[b] - this.s.legsWon[a]) || (this.standing(b) - this.standing(a)))];
+    const rest = idx.filter((i) => i !== w).sort((a, b) =>
+      (this.s.setsWon[b] - this.s.setsWon[a]) || (this.s.legsWon[b] - this.s.legsWon[a]) || (this.standing(b) - this.standing(a)));
+    return w === null ? rest : [w, ...rest];
   }
 
   /** "Leg 2/3 · Set 1 · Round 4/20" */
