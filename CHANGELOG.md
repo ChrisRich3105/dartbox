@@ -5,6 +5,10 @@ All notable changes. The section of a version is used as its GitHub release note
 
 Format: `## vX.Y.Z – YYYY-MM-DD`, newest first.
 
+## v1.3.2 – 2026-11-26
+
+- **Readable text and symbols on every screen:** Dartbox now ships its own font and icons, so the hub and playroom look the same on small kiosk devices (e.g. Siemens iE250), PCs and phones – no more odd lettering or missing symbols.
+
 ## v1.3.1 – 2026-11-25
 
 Cleaner charts and an easier caller setup.

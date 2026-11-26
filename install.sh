@@ -125,6 +125,9 @@ install -m 644 kiosk-extension/* /usr/local/share/dartbox/kiosk-extension/
 install -d /usr/local/share/dartbox/playroom/js /var/lib/dartbox/playroom
 install -m 644 playroom/index.html playroom/app.css /usr/local/share/dartbox/playroom/
 install -m 644 playroom/js/*.js /usr/local/share/dartbox/playroom/js/
+install -d /usr/local/share/dartbox/fonts /usr/local/share/dartbox/playroom/fonts
+install -m 644 fonts/*.woff2 /usr/local/share/dartbox/fonts/
+install -m 644 fonts/*.woff2 /usr/local/share/dartbox/playroom/fonts/
 for f in bin/*; do install -m 755 "$f" /usr/local/bin/; done
 [ -f /etc/dartbox/dartbox.conf ] || install -m 600 config/dartbox.conf /etc/dartbox/
 install -m 644 systemd/*.service systemd/*.timer /etc/systemd/system/

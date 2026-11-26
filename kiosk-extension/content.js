@@ -13,7 +13,9 @@
   const a = document.createElement('a');
   a.href = 'http://localhost/';
   a.title = 'Dartbox hub';
-  a.textContent = '🎯';
+  // drawn, not a text emoji: foreign pages and a bare kiosk browser may have no emoji font
+  a.innerHTML = '<svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="#fff" stroke-width="2">' +
+    '<circle cx="13" cy="13" r="11"/><circle cx="13" cy="13" r="6"/><circle cx="13" cy="13" r="1.5" fill="#fff"/></svg>';
   Object.assign(a.style, {
     position: 'fixed', left: '12px', bottom: '12px', zIndex: '2147483647',
     width: '48px', height: '48px', borderRadius: '50%',

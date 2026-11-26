@@ -5,10 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Dartbox</title>
 <style>
+  /* bundled fonts: the box's browser may have no suitable system fonts or symbols */
+  @font-face { font-family:'DartboxUI'; src:url('/fonts/DartboxUI-Regular.woff2') format('woff2'); font-weight:400; font-style:normal; }
+  @font-face { font-family:'DartboxUI'; src:url('/fonts/DartboxUI-Bold.woff2') format('woff2'); font-weight:600 900; font-style:normal; }
+  @font-face { font-family:'DartboxEmoji'; src:url('/fonts/DartboxEmoji.woff2') format('woff2'); font-weight:100 900; font-style:normal; }
+  @font-face { font-family:'DartboxIcons'; src:url('/fonts/DartboxIcons.woff2') format('woff2'); font-weight:100 900; font-style:normal; }
   :root { --bg:#14161a; --card:#1e2127; --fg:#e8eaed; --mut:#9aa0a6; --acc:#3ea6ff; --ok:#34c759; --warn:#ff9f0a; --err:#ff453a; --line:#2c3038; }
   * { box-sizing:border-box; }
   html, body { height:100%; }
-  body { margin:0; font:16px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--fg); display:flex; flex-direction:column; }
+  body { margin:0; font:16px/1.45 'DartboxUI', 'DartboxEmoji', 'DartboxIcons', system-ui, sans-serif; background:var(--bg); color:var(--fg); display:flex; flex-direction:column; }
   header { display:flex; align-items:center; gap:12px; padding:10px 16px; background:#1a1d22; border-bottom:1px solid var(--line); flex-wrap:wrap; }
   header h1 { font-size:19px; margin:0 8px 0 0; white-space:nowrap; }
   nav { display:flex; gap:4px; flex-wrap:wrap; }
@@ -34,6 +39,7 @@
   li.net { display:flex; justify-content:space-between; align-items:center; padding:12px 4px; border-top:1px solid var(--line); cursor:pointer; }
   li.net:first-child { border-top:none; }
   li.net:hover { background:#252931; }
+  button, input { font-family:inherit; }
   input { width:100%; padding:12px; margin:6px 0 10px; border-radius:8px; border:1px solid #3a3f48; background:#121418; color:var(--fg); font-size:16px; }
   button { padding:11px 16px; border:0; border-radius:8px; background:var(--acc); color:#000; font-weight:600; font-size:15px; cursor:pointer; }
   button:disabled { opacity:.4; cursor:default; }

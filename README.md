@@ -311,6 +311,7 @@ webui/index.html            the hub
 playroom/                   playroom web app (plain ES modules, no build step):
                               engine/games/training = rules, dartboard/charts/fx/sound = presentation
 kiosk-extension/            Chromium extension: 🎯 button + remote screen switching
+fonts/                      bundled web fonts (DejaVu Sans + Noto Emoji subsets) and build-fonts.py
 systemd/, config/           units, udev rule, default config
 tests/                      static checks + game engine tests (also run in CI)
 ```

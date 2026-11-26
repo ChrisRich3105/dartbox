@@ -1,3 +1,8 @@
+/* bundled fonts: the box's browser may have no suitable system fonts or symbols */
+@font-face { font-family: 'DartboxUI'; src: url('fonts/DartboxUI-Regular.woff2') format('woff2'); font-weight: 400; font-style: normal; }
+@font-face { font-family: 'DartboxUI'; src: url('fonts/DartboxUI-Bold.woff2') format('woff2'); font-weight: 600 900; font-style: normal; }
+@font-face { font-family: 'DartboxEmoji'; src: url('fonts/DartboxEmoji.woff2') format('woff2'); font-weight: 100 900; font-style: normal; }
+@font-face { font-family: 'DartboxIcons'; src: url('fonts/DartboxIcons.woff2') format('woff2'); font-weight: 100 900; font-style: normal; }
 :root {
   --bg: #121418; --panel: #1b1e24; --panel2: #23272f; --line: #2d323b;
   --fg: #e9ebee; --mut: #9aa1aa; --acc: #3ea6ff; --acc2: #1f6fb3;
@@ -6,7 +11,7 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
-body { background: var(--bg); color: var(--fg); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; display: flex; flex-direction: column; }
+body { background: var(--bg); color: var(--fg); font: 16px/1.4 'DartboxUI', 'DartboxEmoji', 'DartboxIcons', system-ui, -apple-system, "Segoe UI", sans-serif; display: flex; flex-direction: column; }
 a { color: var(--acc); }
 button { font: inherit; cursor: pointer; border: 0; border-radius: 10px; padding: 10px 16px; background: var(--panel2); color: var(--fg); font-weight: 600; }
 button:disabled { opacity: .4; cursor: default; }
